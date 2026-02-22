@@ -1,0 +1,35 @@
+# Virtual environment
+.venv/
+
+# Images and video
+Images/
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.tiff
+*.mp4
+*.avi
+*.mov
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# VS Code settings
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Jupyter notebooks
+.ipynb_checkpoints/
+
+# Model weights and datasets
+*.pt
+*.pth
+*.onnx
+*.pkl
+*.h5
