@@ -11,6 +11,7 @@ Images/
 *.mp4
 *.avi
 *.mov
+*.zip
 
 # Python cache
 __pycache__/
@@ -33,3 +34,10 @@ Thumbs.db
 *.onnx
 *.pkl
 *.h5
+
+# Test/obsolete files
+archive/
+
+# Training
+*.txt
+*.cache
