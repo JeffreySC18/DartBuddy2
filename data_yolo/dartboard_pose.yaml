@@ -1,0 +1,15 @@
+# DeepDarts -> YOLOv8 Pose
+path: D:\Coding\DartBuddy2\data_yolo
+train: images/train
+val:   images/val
+
+nc: 2
+names: ['board', 'dart']
+
+# 4 keypoints per instance, 3 dims each (x, y, visibility)
+# board: kp0-3 = calibration points (top, right, bottom, left)
+# dart:  kp0 = tip, kp1-3 = padding zeros
+kpt_shape: [4, 3]
+
+# Horizontal flip remapping: top stays, right<->left swap, bottom stays
+flip_idx: [0, 3, 2, 1]

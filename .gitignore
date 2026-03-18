@@ -41,3 +41,6 @@ archive/
 # Training
 *.txt
 *.cache
+*.json
+*.log
+*.wandb
