@@ -107,9 +107,8 @@ def convert(labels_path, images_root, out_root, dataset='both',
 
         lines = []
 
-        # ── Class 0: board ────────────────────────────────────────────────
-        # Derive bbox entirely from calibration keypoints (already 0-1 normalised).
-        # Never use the raw bbox column - it's in original photo pixel coords.
+        # Class 0: board
+        # Derive bbox entirely from calibration keypoints.
         bcx, bcy, bw, bh = board_bbox_from_keypoints(cal_pts)
 
         # Clamp everything to 0-1
@@ -120,7 +119,7 @@ def convert(labels_path, images_root, out_root, dataset='both',
         )
         lines.append(f"0 {bcx:.6f} {bcy:.6f} {bw:.6f} {bh:.6f} {kp_str}")
 
-        # ── Class 1: dart ─────────────────────────────────────────────────
+        # Class 1: dart
         # 1 tip keypoint + 3 zero-padded to satisfy kpt_shape=[4,3]
         for tip in valid_darts:
             dcx, dcy = clamp(tip[0]), clamp(tip[1])
@@ -147,7 +146,7 @@ def convert(labels_path, images_root, out_root, dataset='both',
 
 
 def write_yaml(out_root):
-    content = f"""# DeepDarts -> YOLOv8 Pose
+    content = f"""
 path: {Path(out_root).resolve()}
 train: images/train
 val:   images/val
