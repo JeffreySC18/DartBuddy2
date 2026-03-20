@@ -287,7 +287,10 @@
   //const API = 'http://localhost:8000';
   //const API = 'http://192.168.1.161:8000'; // Adjust to your server's IP
   const API = ''; // Same-origin
-  const INTERVAL_MS = 200; // ~5fps — adjust as needed
+  const INTERVAL_MS = 100; // ~10fps — adjust as needed (200ms is 5fps)
+  const BUFFER_SIZE = 8;
+  const STABILITY_THRESHOLD = 0.6;
+  let scoreBuffers = [[], [], []];
 
   // State
   let stream     = null;
@@ -405,34 +408,63 @@
     }
   }
 
+  function stableScore(index, score, value) {
+    const buf = scoreBuffers[index];
+    buf.push({ score, value });
+    if (buf.length > BUFFER_SIZE) buf.shift();
+
+    const counts = {};
+    buf.forEach(s => counts[s.score] = (counts[s.score] || 0) + 1);
+    const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+
+    return top[1] / buf.length >= STABILITY_THRESHOLD
+        ? buf.find(s => s.score === top[0])
+        : null;
+}
+
   // Score UI
   function updateScores(data) {
     const darts = data.darts || [];
     dartRows.forEach((row, i) => {
-      const scoreEl = row.querySelector('.dart-score');
-      const ptsEl   = row.querySelector('.dart-pts');
-      if (i < darts.length) {
-        const d = darts[i];
-        scoreEl.textContent = d.score;
-        scoreEl.className   = `dart-score ${d.value > 0 ? 'hit' : 'miss'}`;
-        ptsEl.textContent   = d.value > 0 ? `${d.value}` : '';
-      } else {
-        scoreEl.textContent = '—';
-        scoreEl.className   = 'dart-score miss';
-        ptsEl.textContent   = '';
-      }
+        const scoreEl = row.querySelector('.dart-score');
+        const ptsEl   = row.querySelector('.dart-pts');
+        if (i < darts.length) {
+            const stable = stableScore(i, darts[i].score, darts[i].value);
+            if (stable) {
+                scoreEl.textContent = stable.score;
+                scoreEl.className   = `dart-score ${stable.value > 0 ? 'hit' : 'miss'}`;
+                ptsEl.textContent   = stable.value > 0 ? `${stable.value}` : '';
+            }
+        } else {
+            scoreEl.textContent = '—';
+            scoreEl.className   = 'dart-score miss';
+            ptsEl.textContent   = '';
+        }
     });
-    totalEl.textContent = data.total || 0;
-  }
+
+    const total = scoreBuffers.reduce((sum, buf) => {
+        if (!buf.length) return sum;
+        const counts = {};
+        buf.forEach(s => counts[s.score] = (counts[s.score] || 0) + 1);
+        const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+        if (top[1] / buf.length >= STABILITY_THRESHOLD) {
+            return sum + (buf.find(s => s.score === top[0])?.value || 0);
+        }
+        return sum;
+    }, 0);
+    totalEl.textContent = total;
+}
+  
 
   function resetScores() {
+    scoreBuffers = [[], [], []];
     dartRows.forEach(row => {
-      row.querySelector('.dart-score').textContent = '—';
-      row.querySelector('.dart-score').className   = 'dart-score miss';
-      row.querySelector('.dart-pts').textContent   = '';
+        row.querySelector('.dart-score').textContent = '—';
+        row.querySelector('.dart-score').className   = 'dart-score miss';
+        row.querySelector('.dart-pts').textContent   = '';
     });
     totalEl.textContent = '0';
-  }
+}
 
   // Canvas overlay
   function drawOverlay(data) {
