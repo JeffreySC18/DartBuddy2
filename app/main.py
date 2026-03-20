@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.detector import Detector
 
@@ -63,3 +64,5 @@ async def detect(request: Request, file: UploadFile = File(...)) -> dict:
 
     result["inference_ms"] = round((time.perf_counter() - t0) * 1000, 1)
     return result
+
+app.mount("/", StaticFiles(directory=".", html=True), name="static")

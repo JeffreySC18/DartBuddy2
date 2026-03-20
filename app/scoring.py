@@ -65,7 +65,7 @@ def estimate_homography(cal_pts_px: np.ndarray, board_radius: float):
 def pixel_to_board_norm(px, py, board_center, board_radius, H):
     if H is not None:
         pt = np.array([[[float(px), float(py)]]], dtype=np.float32)
-        transformed = cv2.perspectiveTransform(pt, np.linalg.inv(H))[0][0]
+        transformed = cv2.perspectiveTransform(pt, H)[0][0]
         return transformed[0] / board_radius, transformed[1] / board_radius
     cx, cy = board_center
     return (px - cx) / board_radius, (py - cy) / board_radius

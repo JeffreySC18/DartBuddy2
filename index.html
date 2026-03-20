@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DartBuddy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    /* Reset & tokens*/
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0e0e0e;
+      --surface:   #161616;
+      --border:    #242424;
+      --text:      #e8e8e8;
+      --muted:     #666;
+      --accent:    #c8ff00;
+      --danger:    #ff4444;
+      --mono:      'DM Mono', monospace;
+      --sans:      'DM Sans', sans-serif;
+      --radius:    6px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 14px;
+      min-height: 100dvh;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+
+    /*Header*/
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .logo {
+      font-family: var(--mono);
+      font-size: 13px;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--muted);
+      transition: background 0.3s;
+    }
+
+    .status-dot.online  { background: var(--accent); }
+    .status-dot.error   { background: var(--danger); }
+
+    /*Main layout*/
+    main {
+      display: grid;
+      grid-template-columns: 1fr 280px;
+      gap: 0;
+      overflow: hidden;
+    }
+
+    @media (max-width: 700px) {
+      main { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
+    }
+
+    /*Camera panel*/
+    #camera-panel {
+      position: relative;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      min-height: 300px;
+    }
+
+    #video  { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+    #canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+
+    .cam-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .cam-placeholder svg { opacity: 0.3; }
+
+    /*Inference badge*/
+    #inf-badge {
+      position: absolute;
+      bottom: 12px;
+      left: 12px;
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--muted);
+      background: rgba(0,0,0,0.6);
+      padding: 3px 8px;
+      border-radius: var(--radius);
+      display: none;
+    }
+
+    /*Score panel*/
+    #score-panel {
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+
+    @media (max-width: 700px) {
+      #score-panel { border-left: none; border-top: 1px solid var(--border); }
+    }
+
+    .panel-section {
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .panel-label {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+
+    /*Dart rows*/
+    .dart-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      padding: 6px 0;
+    }
+
+    .dart-row + .dart-row { border-top: 1px solid var(--border); }
+
+    .dart-label {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .dart-score {
+      font-family: var(--mono);
+      font-size: 18px;
+      font-weight: 500;
+      color: var(--text);
+      transition: color 0.2s;
+    }
+
+    .dart-score.hit   { color: var(--accent); }
+    .dart-score.miss  { color: var(--muted); }
+
+    .dart-pts {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      min-width: 32px;
+      text-align: right;
+    }
+
+    /*Total*/
+    #total-display {
+      font-family: var(--mono);
+      font-size: 48px;
+      font-weight: 500;
+      color: var(--accent);
+      line-height: 1;
+      margin-top: 4px;
+    }
+
+    /*Controls*/
+    .btn {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      padding: 8px 14px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+      width: 100%;
+      text-align: left;
+    }
+
+    .btn:hover { border-color: var(--text); color: var(--text); }
+    .btn.active { border-color: var(--accent); color: var(--accent); }
+    .btn + .btn { margin-top: 6px; }
+
+    /*Footer*/
+    footer {
+      padding: 10px 20px;
+      border-top: 1px solid var(--border);
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <span class="logo">DARTBUDDY</span>
+  <div class="status">
+    <div class="status-dot" id="status-dot"></div>
+    <span id="status-text">connecting...</span>
+  </div>
+</header>
+
+<main>
+  <!-- Camera -->
+  <div id="camera-panel">
+    <video id="video" autoplay muted playsinline></video>
+    <canvas id="canvas"></canvas>
+    <div class="cam-placeholder" id="placeholder">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+        <circle cx="12" cy="13" r="4"/>
+      </svg>
+      <span>start camera</span>
+    </div>
+    <div id="inf-badge">--ms</div>
+  </div>
+
+  <!-- Scores -->
+  <div id="score-panel">
+    <div class="panel-section">
+      <div class="panel-label">DARTS</div>
+      <div id="dart-rows">
+        <div class="dart-row"><span class="dart-label">01</span><span class="dart-score miss">—</span><span class="dart-pts"></span></div>
+        <div class="dart-row"><span class="dart-label">02</span><span class="dart-score miss">—</span><span class="dart-pts"></span></div>
+        <div class="dart-row"><span class="dart-label">03</span><span class="dart-score miss">—</span><span class="dart-pts"></span></div>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-label">TOTAL</div>
+      <div id="total-display">0</div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-label">CAMERA</div>
+      <button class="btn" id="btn-camera">start camera</button>
+      <button class="btn" id="btn-facing">flip camera</button>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-label">CONTROLS</div>
+      <button class="btn" id="btn-freeze">freeze</button>
+      <button class="btn" id="btn-reset">reset scores</button>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <span>dartbuddy v0.1</span>
+  <span id="fps-display">-- fps</span>
+</footer>
+
+<script>
+  //const API = 'http://localhost:8000';
+  //const API = 'http://192.168.1.161:8000'; // Adjust to your server's IP
+  const API = ''; // Same-origin
+  const INTERVAL_MS = 200; // ~5fps — adjust as needed
+
+  // State
+  let stream     = null;
+  let intervalId = null;
+  let frozen     = false;
+  let facingMode = 'environment'; // rear camera default
+  let lastResult = null;
+  let frameCount = 0;
+  let fpsTimer   = Date.now();
+
+  // Elements
+  const video       = document.getElementById('video');
+  const canvas      = document.getElementById('canvas');
+  const ctx         = canvas.getContext('2d');
+  const placeholder = document.getElementById('placeholder');
+  const infBadge    = document.getElementById('inf-badge');
+  const statusDot   = document.getElementById('status-dot');
+  const statusText  = document.getElementById('status-text');
+  const totalEl     = document.getElementById('total-display');
+  const fpsEl       = document.getElementById('fps-display');
+  const dartRows    = document.querySelectorAll('#dart-rows .dart-row');
+
+  // Server health check
+  async function checkHealth() {
+    try {
+      const res = await fetch(`${API}/health`);
+      const data = await res.json();
+      setStatus(data.model_loaded ? 'online' : 'error',
+                data.model_loaded ? 'model ready' : 'model not loaded');
+    } catch {
+      setStatus('error', 'server offline');
+    }
+  }
+
+  function setStatus(state, text) {
+    statusDot.className = `status-dot ${state}`;
+    statusText.textContent = text;
+  }
+
+  // Camera
+  async function startCamera() {
+    if (stream) stopCamera();
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } }
+      });
+      video.srcObject = stream;
+      placeholder.style.display = 'none';
+      infBadge.style.display = 'block';
+      document.getElementById('btn-camera').textContent = 'stop camera';
+      document.getElementById('btn-camera').classList.add('active');
+      startDetection();
+    } catch (e) {
+      setStatus('error', 'camera denied');
+    }
+  }
+
+  function stopCamera() {
+    stream?.getTracks().forEach(t => t.stop());
+    stream = null;
+    stopDetection();
+    placeholder.style.display = 'flex';
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    infBadge.style.display = 'none';
+    document.getElementById('btn-camera').textContent = 'start camera';
+    document.getElementById('btn-camera').classList.remove('active');
+  }
+
+  //Detection loop
+  function startDetection() {
+    stopDetection();
+    intervalId = setInterval(sendFrame, INTERVAL_MS);
+  }
+
+  function stopDetection() {
+    clearInterval(intervalId);
+    intervalId = null;
+  }
+
+  async function sendFrame() {
+    if (frozen || !stream || video.readyState < 2) return;
+
+    // Grab frame
+    const offscreen = document.createElement('canvas');
+    offscreen.width  = video.videoWidth;
+    offscreen.height = video.videoHeight;
+    offscreen.getContext('2d').drawImage(video, 0, 0);
+
+    offscreen.toBlob(async (blob) => {
+      if (!blob) return;
+      const form = new FormData();
+      form.append('file', blob, 'frame.jpg');
+
+      try {
+        const res  = await fetch(`${API}/detect`, { method: 'POST', body: form });
+        const data = await res.json();
+        lastResult = data;
+        updateScores(data);
+        drawOverlay(data);
+        infBadge.textContent = `${data.inference_ms}ms`;
+        trackFps();
+      } catch {
+        setStatus('error', 'request failed');
+      }
+    }, 'image/jpeg', 0.8);
+  }
+
+  function trackFps() {
+    frameCount++;
+    const now = Date.now();
+    if (now - fpsTimer >= 1000) {
+      fpsEl.textContent = `${frameCount} fps`;
+      frameCount = 0;
+      fpsTimer = now;
+    }
+  }
+
+  // Score UI
+  function updateScores(data) {
+    const darts = data.darts || [];
+    dartRows.forEach((row, i) => {
+      const scoreEl = row.querySelector('.dart-score');
+      const ptsEl   = row.querySelector('.dart-pts');
+      if (i < darts.length) {
+        const d = darts[i];
+        scoreEl.textContent = d.score;
+        scoreEl.className   = `dart-score ${d.value > 0 ? 'hit' : 'miss'}`;
+        ptsEl.textContent   = d.value > 0 ? `${d.value}` : '';
+      } else {
+        scoreEl.textContent = '—';
+        scoreEl.className   = 'dart-score miss';
+        ptsEl.textContent   = '';
+      }
+    });
+    totalEl.textContent = data.total || 0;
+  }
+
+  function resetScores() {
+    dartRows.forEach(row => {
+      row.querySelector('.dart-score').textContent = '—';
+      row.querySelector('.dart-score').className   = 'dart-score miss';
+      row.querySelector('.dart-pts').textContent   = '';
+    });
+    totalEl.textContent = '0';
+  }
+
+  // Canvas overlay
+  function drawOverlay(data) {
+    if (!video.videoWidth) return;
+
+    canvas.width  = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const board = data.board;
+    if (board?.detected) {
+      // Board bbox
+      const [x1, y1, x2, y2] = board.bbox;
+      ctx.strokeStyle = '#c8ff00';
+      ctx.lineWidth   = 1.5;
+      ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+
+      // Calibration keypoints
+      (board.keypoints || []).forEach(kp => {
+        if (!kp) return;
+        ctx.beginPath();
+        ctx.arc(kp[0], kp[1], 4, 0, Math.PI * 2);
+        ctx.fillStyle = '#c8ff00';
+        ctx.fill();
+      });
+    }
+
+    // Darts
+    (data.darts || []).forEach(d => {
+      const [x1, y1, x2, y2] = d.bbox;
+      ctx.strokeStyle = d.value > 0 ? '#ffffff' : '#666666';
+      ctx.lineWidth   = 1;
+      ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+
+      // Tip dot
+      ctx.beginPath();
+      ctx.arc(d.tip[0], d.tip[1], 4, 0, Math.PI * 2);
+      ctx.fillStyle = d.value > 0 ? '#ffffff' : '#666666';
+      ctx.fill();
+
+      // Score label
+      ctx.font         = '500 12px DM Mono, monospace';
+      ctx.fillStyle    = d.value > 0 ? '#c8ff00' : '#666666';
+      ctx.textAlign    = 'center';
+      ctx.fillText(d.score, d.tip[0], d.tip[1] - 10);
+    });
+  }
+
+  // Button handlers
+  document.getElementById('btn-camera').addEventListener('click', () => {
+    stream ? stopCamera() : startCamera();
+  });
+
+  document.getElementById('btn-facing').addEventListener('click', () => {
+    facingMode = facingMode === 'environment' ? 'user' : 'environment';
+    if (stream) startCamera();
+  });
+
+  document.getElementById('btn-freeze').addEventListener('click', function() {
+    frozen = !frozen;
+    this.classList.toggle('active', frozen);
+    this.textContent = frozen ? 'unfreeze' : 'freeze';
+  });
+
+  document.getElementById('btn-reset').addEventListener('click', resetScores);
+
+  // Init
+  checkHealth();
+  setInterval(checkHealth, 10000);
+</script>
+</body>
+</html>

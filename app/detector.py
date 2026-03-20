@@ -54,12 +54,20 @@ class Detector:
             if len(valid_cal) >= 4:
                 H = estimate_homography(valid_cal, board_radius)
 
+            print("Keypoints:", cal_pts)
+            if H is not None:
+                for tip in [[581.24, 461.38], [461.25, 471.64], [574.37, 626.76]]:
+                    nx, ny = pixel_to_board_norm(tip[0], tip[1], board_center, board_radius, H)
+                    print(f"  tip {tip} -> norm ({nx:.3f}, {ny:.3f}), dist={np.hypot(nx,ny):.3f}")
+
             board = {
                 "detected":   True,
                 "confidence": round(float(box.conf[0]), 3),
                 "bbox":       [x1, y1, x2, y2],
                 "keypoints":  cal_pts,
             }
+
+            print(f"board_radius: {board_radius}, board_center: {board_center}")
             break
 
         # Pass 2: darts (max 3)
