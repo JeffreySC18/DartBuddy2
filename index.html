@@ -7,20 +7,19 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
   <style>
-    /* Reset & tokens*/
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:        #0e0e0e;
-      --surface:   #161616;
-      --border:    #242424;
-      --text:      #e8e8e8;
-      --muted:     #666;
-      --accent:    #c8ff00;
-      --danger:    #ff4444;
-      --mono:      'DM Mono', monospace;
-      --sans:      'DM Sans', sans-serif;
-      --radius:    6px;
+      --bg:      #0e0e0e;
+      --surface: #161616;
+      --border:  #242424;
+      --text:    #e8e8e8;
+      --muted:   #666;
+      --accent:  #c8ff00;
+      --danger:  #ff4444;
+      --mono:    'DM Mono', monospace;
+      --sans:    'DM Sans', sans-serif;
+      --radius:  6px;
     }
 
     body {
@@ -33,7 +32,6 @@
       grid-template-rows: auto 1fr auto;
     }
 
-    /*Header*/
     header {
       display: flex;
       align-items: center;
@@ -66,14 +64,12 @@
       transition: background 0.3s;
     }
 
-    .status-dot.online  { background: var(--accent); }
-    .status-dot.error   { background: var(--danger); }
+    .status-dot.online { background: var(--accent); }
+    .status-dot.error  { background: var(--danger); }
 
-    /*Main layout*/
     main {
       display: grid;
       grid-template-columns: 1fr 280px;
-      gap: 0;
       overflow: hidden;
     }
 
@@ -81,7 +77,6 @@
       main { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
     }
 
-    /*Camera panel*/
     #camera-panel {
       position: relative;
       background: #000;
@@ -107,7 +102,6 @@
 
     .cam-placeholder svg { opacity: 0.3; }
 
-    /*Inference badge*/
     #inf-badge {
       position: absolute;
       bottom: 12px;
@@ -121,7 +115,6 @@
       display: none;
     }
 
-    /*Score panel*/
     #score-panel {
       border-left: 1px solid var(--border);
       display: flex;
@@ -146,7 +139,6 @@
       margin-bottom: 12px;
     }
 
-    /*Dart rows*/
     .dart-row {
       display: flex;
       align-items: baseline;
@@ -170,8 +162,9 @@
       transition: color 0.2s;
     }
 
-    .dart-score.hit   { color: var(--accent); }
-    .dart-score.miss  { color: var(--muted); }
+    .dart-score.hit     { color: var(--accent); }
+    .dart-score.miss    { color: var(--muted); }
+    .dart-score.waiting { color: var(--muted); font-size: 13px; }
 
     .dart-pts {
       font-family: var(--mono);
@@ -181,7 +174,6 @@
       text-align: right;
     }
 
-    /*Total*/
     #total-display {
       font-family: var(--mono);
       font-size: 48px;
@@ -191,7 +183,6 @@
       margin-top: 4px;
     }
 
-    /*Controls*/
     .btn {
       font-family: var(--mono);
       font-size: 11px;
@@ -207,11 +198,10 @@
       text-align: left;
     }
 
-    .btn:hover { border-color: var(--text); color: var(--text); }
+    .btn:hover  { border-color: var(--text); color: var(--text); }
     .btn.active { border-color: var(--accent); color: var(--accent); }
     .btn + .btn { margin-top: 6px; }
 
-    /*Footer*/
     footer {
       padding: 10px 20px;
       border-top: 1px solid var(--border);
@@ -234,7 +224,6 @@
 </header>
 
 <main>
-  <!-- Camera -->
   <div id="camera-panel">
     <video id="video" autoplay muted playsinline></video>
     <canvas id="canvas"></canvas>
@@ -248,7 +237,6 @@
     <div id="inf-badge">--ms</div>
   </div>
 
-  <!-- Scores -->
   <div id="score-panel">
     <div class="panel-section">
       <div class="panel-label">DARTS</div>
@@ -272,6 +260,7 @@
 
     <div class="panel-section">
       <div class="panel-label">CONTROLS</div>
+      <button class="btn" id="btn-debug">debug overlay</button>
       <button class="btn" id="btn-freeze">freeze</button>
       <button class="btn" id="btn-reset">reset scores</button>
     </div>
@@ -284,24 +273,363 @@
 </footer>
 
 <script>
-  //const API = 'http://localhost:8000';
-  //const API = 'http://192.168.1.161:8000'; // Adjust to your server's IP
-  const API = ''; // Same-origin
-  const INTERVAL_MS = 100; // ~10fps — adjust as needed (200ms is 5fps)
-  const BUFFER_SIZE = 8;
-  const STABILITY_THRESHOLD = 0.6;
-  let scoreBuffers = [[], [], []];
+  const API         = '';
+  const INTERVAL_MS = 100;   // ~10 fps
 
-  // State
+  // ─── Tuning ──────────────────────────────────────────────────────────────────
+
+  // Board – EMA smoothing factor. Higher = snappier but jitterier (0–1).
+  // 0.15 means each new reading contributes 15% to the running average,
+  // so small tremors are strongly damped.
+  const BOARD_EMA_ALPHA     = 0.15;
+
+  // Board – how many consecutive frames the smoothed keypoints must remain
+  // within BOARD_STABLE_PX pixels of each other before we lock.
+  const BOARD_STABLE_FRAMES = 10;
+  const BOARD_STABLE_PX     = 6;    // per-keypoint max drift to count as stable
+
+  // Board – if the raw detection jumps more than this from the EMA average,
+  // treat it as a genuine camera shift and reset stability (but keep the EMA).
+  // This separates real movement from detector noise.
+  const BOARD_SHIFT_PX      = 40;
+
+  // Darts – accumulate this many frames (~2 s at 10 fps) before voting.
+  const DART_ACCUM_FRAMES   = 20;
+  const DART_LOCK_THRESHOLD = 0.60;
+
+  // End-of-round – frames of zero darts (after first lock) before reset.
+  const ALL_ABSENT_FRAMES   = 25;   // ≈ 2.5 s
+
+  // Pixel radius for matching a new dart detection to an existing slot.
+  const TIP_MATCH_RADIUS    = 80;
+
+
+  // ─── Board state ─────────────────────────────────────────────────────────────
+  //
+  // Strategy:
+  //   1. On each frame with 4 valid keypoints, blend them into a running EMA.
+  //   2. Count how many consecutive frames the raw detection was within
+  //      BOARD_STABLE_PX of the EMA (i.e. "stable").
+  //   3. Once BOARD_STABLE_FRAMES consecutive stable frames are seen, lock.
+  //   4. If the raw detection jumps > BOARD_SHIFT_PX from the EMA (real camera
+  //      movement), reset the stability counter but keep the EMA — so it
+  //      quickly re-acquires after a deliberate repositioning.
+  //   5. After locking, the EMA and locked keypoints are frozen. Only the live
+  //      bbox keeps updating (for the overlay rectangle).
+
+  const boardState = {
+    locked:       false,
+    ema:          null,    // running average: [[x,y], [x,y], [x,y], [x,y]]
+    stableFrames: 0,       // consecutive frames within BOARD_STABLE_PX
+    keypoints:    null,    // frozen keypoints once locked
+    bbox:         null,    // live bbox (always updated)
+    conf:         0,
+  };
+
+  function resetBoardState() {
+    boardState.locked       = false;
+    boardState.ema          = null;
+    boardState.stableFrames = 0;
+    boardState.keypoints    = null;
+    boardState.bbox         = null;
+    boardState.conf         = 0;
+  }
+
+  function updateBoard(data) {
+    const board = data.board;
+
+    // Always keep live bbox for overlay.
+    if (board?.detected) {
+      boardState.bbox = board.bbox;
+      boardState.conf = board.confidence;
+    }
+
+    // Once locked, nothing changes.
+    if (boardState.locked) return;
+
+    if (!board?.detected) return;   // board not visible — just wait
+
+    const kps = board.keypoints || [];
+    if (kps.filter(k => k !== null).length < 4) return;  // partial frame — skip
+
+    if (!boardState.ema) {
+      // First valid frame: seed the EMA.
+      boardState.ema = kps.map(k => [k[0], k[1]]);
+      boardState.stableFrames = 1;
+      return;
+    }
+
+    // Measure max drift of this frame's raw keypoints from the current EMA.
+    const maxDrift = Math.max(...kps.map((k, i) => {
+      const [ex, ey] = boardState.ema[i];
+      return Math.hypot(k[0] - ex, k[1] - ey);
+    }));
+
+    if (maxDrift > BOARD_SHIFT_PX) {
+      // Real camera movement — reset stability counter but keep the EMA so we
+      // re-converge quickly rather than starting from scratch.
+      boardState.stableFrames = 0;
+    } else {
+      boardState.stableFrames++;
+    }
+
+    // Blend this frame into the EMA regardless of drift (keeps it tracking).
+    boardState.ema = boardState.ema.map((e, i) => [
+      e[0] + BOARD_EMA_ALPHA * (kps[i][0] - e[0]),
+      e[1] + BOARD_EMA_ALPHA * (kps[i][1] - e[1]),
+    ]);
+
+    if (boardState.stableFrames >= BOARD_STABLE_FRAMES) {
+      boardState.keypoints = boardState.ema.map(e => [e[0], e[1]]);
+      boardState.locked    = true;
+      console.log('[board] locked after', boardState.stableFrames, 'stable frames:', boardState.keypoints);
+    }
+  }
+
+
+  // ─── Dart slot ───────────────────────────────────────────────────────────────
+  //
+  //  empty  ──(dart seen)──▶  accumulating  ──(vote passes)──▶  locked
+  //    ▲                                                             │
+  //    └──────────────── all-absent global reset ───────────────────┘
+  //
+  // Locked slots are completely immutable until a global reset.
+  // Absent frames while accumulating are a no-op — we don't penalise for
+  // momentary non-detection.
+
+  class DartSlot {
+    constructor() { this.reset(); }
+
+    reset() {
+      this.state       = 'empty';
+      this.buffer      = [];
+      this.lockedScore = null;
+      this.lockedValue = null;
+      this.lastTip     = null;
+    }
+
+    update(detected, score, value) {
+      if (this.state === 'locked') return;
+      if (!detected) return;
+
+      this.state = 'accumulating';
+      this.buffer.push({ score, value });
+      if (this.buffer.length > DART_ACCUM_FRAMES) this.buffer.shift();
+      if (this.buffer.length < DART_ACCUM_FRAMES) return;
+
+      const counts = {};
+      this.buffer.forEach(s => { counts[s.score] = (counts[s.score] || 0) + 1; });
+      const [topScore, topCount] = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+
+      if (topCount / this.buffer.length >= DART_LOCK_THRESHOLD) {
+        this.state       = 'locked';
+        this.lockedScore = topScore;
+        this.lockedValue = this.buffer.find(s => s.score === topScore).value;
+        console.log(`[dart] locked: ${topScore}`);
+      }
+    }
+
+    get display() {
+      if (this.state === 'locked')       return { score: this.lockedScore, value: this.lockedValue, state: 'locked' };
+      if (this.state === 'accumulating') return { score: '...', value: null, state: 'accumulating' };
+      return { score: '—', value: null, state: 'empty' };
+    }
+  }
+
+
+  // ─── Round state ─────────────────────────────────────────────────────────────
+
+  const slots = [new DartSlot(), new DartSlot(), new DartSlot()];
+  let allAbsentCounter = 0;
+  let dartEverLocked   = false;
+
+  function resetRound() {
+    slots.forEach(s => s.reset());
+    allAbsentCounter = 0;
+    dartEverLocked   = false;
+    console.log('[round] reset');
+  }
+
+
+  // ─── Score update ────────────────────────────────────────────────────────────
+
+  function updateScores(data) {
+    const darts   = data.darts || [];
+    const matched = [false, false, false];
+
+    darts.forEach(dart => {
+      let bestSlot = -1, bestDist = Infinity;
+      slots.forEach((slot, i) => {
+        if (matched[i] || slot.state === 'empty' || !slot.lastTip) return;
+        const dist = Math.hypot(dart.tip[0] - slot.lastTip[0], dart.tip[1] - slot.lastTip[1]);
+        if (dist < bestDist && dist < TIP_MATCH_RADIUS) { bestDist = dist; bestSlot = i; }
+      });
+
+      if (bestSlot >= 0) {
+        slots[bestSlot].lastTip = dart.tip;
+        slots[bestSlot].update(true, dart.score, dart.value);
+        matched[bestSlot] = true;
+      } else {
+        const idx = slots.findIndex((s, i) => s.state === 'empty' && !matched[i]);
+        if (idx >= 0) {
+          slots[idx].lastTip = dart.tip;
+          slots[idx].update(true, dart.score, dart.value);
+          matched[idx] = true;
+        }
+      }
+    });
+
+    slots.forEach((slot, i) => { if (!matched[i]) slot.update(false, null, null); });
+
+    if (slots.some(s => s.state === 'locked')) dartEverLocked = true;
+
+    if (dartEverLocked && darts.length === 0) {
+      allAbsentCounter++;
+      if (allAbsentCounter >= ALL_ABSENT_FRAMES) {
+        resetRound();
+        renderScores();
+        return;
+      }
+    } else if (darts.length > 0) {
+      allAbsentCounter = 0;
+    }
+
+    renderScores();
+  }
+
+  function renderScores() {
+    let total = 0;
+    slots.forEach((slot, i) => {
+      const scoreEl = dartRows[i].querySelector('.dart-score');
+      const ptsEl   = dartRows[i].querySelector('.dart-pts');
+      const d       = slot.display;
+      if (d.state === 'locked') {
+        scoreEl.textContent = d.score;
+        scoreEl.className   = 'dart-score hit';
+        ptsEl.textContent   = `${d.value}`;
+        total += d.value;
+      } else if (d.state === 'accumulating') {
+        scoreEl.textContent = '...';
+        scoreEl.className   = 'dart-score waiting';
+        ptsEl.textContent   = '';
+      } else {
+        scoreEl.textContent = '—';
+        scoreEl.className   = 'dart-score miss';
+        ptsEl.textContent   = '';
+      }
+    });
+    totalEl.textContent = total;
+  }
+
+
+  // ─── Canvas overlay ──────────────────────────────────────────────────────────
+
+  function drawOverlay(data) {
+    if (!video.videoWidth) return;
+    canvas.width  = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Use locked keypoints once available; EMA while acquiring; live otherwise.
+    const bboxToDraw = boardState.bbox || data.board?.bbox;
+    const kpsToDraw  = boardState.locked
+      ? boardState.keypoints
+      : (boardState.ema || data.board?.keypoints || []);
+
+    // Colour codes:
+    //   locked  → full accent green
+    //   EMA/acquiring → dim yellow-green
+    //   no EMA yet → dark muted
+    const boardColor = boardState.locked ? '#c8ff00'
+                     : boardState.ema    ? '#7a9900'
+                                         : '#444400';
+
+    if (bboxToDraw) {
+      const [x1, y1, x2, y2] = bboxToDraw;
+      ctx.strokeStyle = boardColor;
+      ctx.lineWidth   = 1.5;
+      ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+
+      if (debugMode) {
+        ctx.font      = '11px DM Mono, monospace';
+        ctx.fillStyle = boardColor;
+        ctx.textAlign = 'left';
+        const label = boardState.locked
+          ? `board locked  ${Math.round((boardState.conf || 0) * 100)}%`
+          : `acquiring… ${boardState.stableFrames}/${BOARD_STABLE_FRAMES}`;
+        ctx.fillText(label, x1, y1 - 6);
+      }
+    }
+
+    const kpLabels = ['T', 'R', 'B', 'L'];
+    (kpsToDraw || []).forEach((kp, i) => {
+      if (!kp) return;
+      ctx.beginPath();
+      ctx.arc(kp[0], kp[1], debugMode ? 8 : 4, 0, Math.PI * 2);
+      ctx.fillStyle = boardColor;
+      ctx.fill();
+
+      if (debugMode) {
+        ctx.font      = 'bold 14px DM Mono, monospace';
+        ctx.fillStyle = '#000';
+        ctx.textAlign = 'center';
+        ctx.fillText(kpLabels[i], kp[0], kp[1] + 5);
+        ctx.font      = '11px DM Mono, monospace';
+        ctx.fillStyle = boardColor;
+        ctx.textAlign = 'left';
+        ctx.fillText(`${Math.round(kp[0])},${Math.round(kp[1])}`, kp[0] + 12, kp[1] - 8);
+      }
+    });
+
+    if (debugMode && (kpsToDraw || []).filter(k => k).length === 4) {
+      const valid = kpsToDraw.filter(k => k);
+      ctx.strokeStyle = boardColor.replace(')', ', 0.35)').replace('rgb', 'rgba');
+      ctx.lineWidth   = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(valid[0][0], valid[0][1]);
+      valid.forEach(kp => ctx.lineTo(kp[0], kp[1]));
+      ctx.closePath();
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Darts
+    (data.darts || []).forEach(d => {
+      const [x1, y1, x2, y2] = d.bbox;
+      ctx.strokeStyle = d.value > 0 ? '#ffffff' : '#666666';
+      ctx.lineWidth   = 1;
+      ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+
+      ctx.beginPath();
+      ctx.arc(d.tip[0], d.tip[1], debugMode ? 6 : 4, 0, Math.PI * 2);
+      ctx.fillStyle = d.value > 0 ? '#ffffff' : '#666666';
+      ctx.fill();
+
+      ctx.font      = `${debugMode ? '13px' : '12px'} DM Mono, monospace`;
+      ctx.fillStyle = d.value > 0 ? '#c8ff00' : '#666666';
+      ctx.textAlign = 'center';
+      ctx.fillText(d.score, d.tip[0], d.tip[1] - 12);
+
+      if (debugMode) {
+        ctx.font      = '10px DM Mono, monospace';
+        ctx.fillStyle = '#aaaaaa';
+        ctx.fillText(`${Math.round(d.confidence * 100)}%`, d.tip[0], d.tip[1] + 18);
+      }
+    });
+  }
+
+
+  // ─── App plumbing ────────────────────────────────────────────────────────────
+
   let stream     = null;
   let intervalId = null;
   let frozen     = false;
-  let facingMode = 'environment'; // rear camera default
-  let lastResult = null;
+  let debugMode  = false;
+  let facingMode = 'environment';
   let frameCount = 0;
   let fpsTimer   = Date.now();
 
-  // Elements
   const video       = document.getElementById('video');
   const canvas      = document.getElementById('canvas');
   const ctx         = canvas.getContext('2d');
@@ -313,24 +641,20 @@
   const fpsEl       = document.getElementById('fps-display');
   const dartRows    = document.querySelectorAll('#dart-rows .dart-row');
 
-  // Server health check
   async function checkHealth() {
     try {
-      const res = await fetch(`${API}/health`);
+      const res  = await fetch(`${API}/health`);
       const data = await res.json();
       setStatus(data.model_loaded ? 'online' : 'error',
                 data.model_loaded ? 'model ready' : 'model not loaded');
-    } catch {
-      setStatus('error', 'server offline');
-    }
+    } catch { setStatus('error', 'server offline'); }
   }
 
   function setStatus(state, text) {
-    statusDot.className = `status-dot ${state}`;
+    statusDot.className    = `status-dot ${state}`;
     statusText.textContent = text;
   }
 
-  // Camera
   async function startCamera() {
     if (stream) stopCamera();
     try {
@@ -339,13 +663,11 @@
       });
       video.srcObject = stream;
       placeholder.style.display = 'none';
-      infBadge.style.display = 'block';
+      infBadge.style.display    = 'block';
       document.getElementById('btn-camera').textContent = 'stop camera';
       document.getElementById('btn-camera').classList.add('active');
       startDetection();
-    } catch (e) {
-      setStatus('error', 'camera denied');
-    }
+    } catch { setStatus('error', 'camera denied'); }
   }
 
   function stopCamera() {
@@ -357,181 +679,62 @@
     infBadge.style.display = 'none';
     document.getElementById('btn-camera').textContent = 'start camera';
     document.getElementById('btn-camera').classList.remove('active');
+    resetRound();
+    resetBoardState();
   }
 
-  //Detection loop
-  function startDetection() {
-    stopDetection();
-    intervalId = setInterval(sendFrame, INTERVAL_MS);
-  }
-
-  function stopDetection() {
-    clearInterval(intervalId);
-    intervalId = null;
-  }
+  function startDetection() { stopDetection(); intervalId = setInterval(sendFrame, INTERVAL_MS); }
+  function stopDetection()  { clearInterval(intervalId); intervalId = null; }
 
   async function sendFrame() {
     if (frozen || !stream || video.readyState < 2) return;
-
-    // Grab frame
-    const offscreen = document.createElement('canvas');
-    offscreen.width  = video.videoWidth;
-    offscreen.height = video.videoHeight;
-    offscreen.getContext('2d').drawImage(video, 0, 0);
-
-    offscreen.toBlob(async (blob) => {
+    const off = document.createElement('canvas');
+    off.width  = video.videoWidth;
+    off.height = video.videoHeight;
+    off.getContext('2d').drawImage(video, 0, 0);
+    off.toBlob(async blob => {
       if (!blob) return;
       const form = new FormData();
       form.append('file', blob, 'frame.jpg');
-
       try {
         const res  = await fetch(`${API}/detect`, { method: 'POST', body: form });
         const data = await res.json();
-        lastResult = data;
+        updateBoard(data);
         updateScores(data);
         drawOverlay(data);
         infBadge.textContent = `${data.inference_ms}ms`;
-        trackFps();
-      } catch {
-        setStatus('error', 'request failed');
-      }
+        frameCount++;
+        const now = Date.now();
+        if (now - fpsTimer >= 1000) {
+          fpsEl.textContent = `${frameCount} fps`;
+          frameCount = 0;
+          fpsTimer   = now;
+        }
+      } catch { setStatus('error', 'request failed'); }
     }, 'image/jpeg', 0.8);
   }
 
-  function trackFps() {
-    frameCount++;
-    const now = Date.now();
-    if (now - fpsTimer >= 1000) {
-      fpsEl.textContent = `${frameCount} fps`;
-      frameCount = 0;
-      fpsTimer = now;
-    }
-  }
-
-  function stableScore(index, score, value) {
-    const buf = scoreBuffers[index];
-    buf.push({ score, value });
-    if (buf.length > BUFFER_SIZE) buf.shift();
-
-    const counts = {};
-    buf.forEach(s => counts[s.score] = (counts[s.score] || 0) + 1);
-    const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
-
-    return top[1] / buf.length >= STABILITY_THRESHOLD
-        ? buf.find(s => s.score === top[0])
-        : null;
-}
-
-  // Score UI
-  function updateScores(data) {
-    const darts = data.darts || [];
-    dartRows.forEach((row, i) => {
-        const scoreEl = row.querySelector('.dart-score');
-        const ptsEl   = row.querySelector('.dart-pts');
-        if (i < darts.length) {
-            const stable = stableScore(i, darts[i].score, darts[i].value);
-            if (stable) {
-                scoreEl.textContent = stable.score;
-                scoreEl.className   = `dart-score ${stable.value > 0 ? 'hit' : 'miss'}`;
-                ptsEl.textContent   = stable.value > 0 ? `${stable.value}` : '';
-            }
-        } else {
-            scoreEl.textContent = '—';
-            scoreEl.className   = 'dart-score miss';
-            ptsEl.textContent   = '';
-        }
-    });
-
-    const total = scoreBuffers.reduce((sum, buf) => {
-        if (!buf.length) return sum;
-        const counts = {};
-        buf.forEach(s => counts[s.score] = (counts[s.score] || 0) + 1);
-        const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
-        if (top[1] / buf.length >= STABILITY_THRESHOLD) {
-            return sum + (buf.find(s => s.score === top[0])?.value || 0);
-        }
-        return sum;
-    }, 0);
-    totalEl.textContent = total;
-}
-  
-
-  function resetScores() {
-    scoreBuffers = [[], [], []];
-    dartRows.forEach(row => {
-        row.querySelector('.dart-score').textContent = '—';
-        row.querySelector('.dart-score').className   = 'dart-score miss';
-        row.querySelector('.dart-pts').textContent   = '';
-    });
-    totalEl.textContent = '0';
-}
-
-  // Canvas overlay
-  function drawOverlay(data) {
-    if (!video.videoWidth) return;
-
-    canvas.width  = video.videoWidth;
-    canvas.height = video.videoHeight;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    const board = data.board;
-    if (board?.detected) {
-      // Board bbox
-      const [x1, y1, x2, y2] = board.bbox;
-      ctx.strokeStyle = '#c8ff00';
-      ctx.lineWidth   = 1.5;
-      ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
-
-      // Calibration keypoints
-      (board.keypoints || []).forEach(kp => {
-        if (!kp) return;
-        ctx.beginPath();
-        ctx.arc(kp[0], kp[1], 4, 0, Math.PI * 2);
-        ctx.fillStyle = '#c8ff00';
-        ctx.fill();
-      });
-    }
-
-    // Darts
-    (data.darts || []).forEach(d => {
-      const [x1, y1, x2, y2] = d.bbox;
-      ctx.strokeStyle = d.value > 0 ? '#ffffff' : '#666666';
-      ctx.lineWidth   = 1;
-      ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
-
-      // Tip dot
-      ctx.beginPath();
-      ctx.arc(d.tip[0], d.tip[1], 4, 0, Math.PI * 2);
-      ctx.fillStyle = d.value > 0 ? '#ffffff' : '#666666';
-      ctx.fill();
-
-      // Score label
-      ctx.font         = '500 12px DM Mono, monospace';
-      ctx.fillStyle    = d.value > 0 ? '#c8ff00' : '#666666';
-      ctx.textAlign    = 'center';
-      ctx.fillText(d.score, d.tip[0], d.tip[1] - 10);
-    });
-  }
-
-  // Button handlers
-  document.getElementById('btn-camera').addEventListener('click', () => {
-    stream ? stopCamera() : startCamera();
-  });
-
+  document.getElementById('btn-camera').addEventListener('click', () => stream ? stopCamera() : startCamera());
   document.getElementById('btn-facing').addEventListener('click', () => {
     facingMode = facingMode === 'environment' ? 'user' : 'environment';
     if (stream) startCamera();
   });
-
+  document.getElementById('btn-debug').addEventListener('click', function() {
+    debugMode = !debugMode;
+    this.classList.toggle('active', debugMode);
+    this.textContent = debugMode ? 'hide debug' : 'debug overlay';
+  });
   document.getElementById('btn-freeze').addEventListener('click', function() {
     frozen = !frozen;
     this.classList.toggle('active', frozen);
     this.textContent = frozen ? 'unfreeze' : 'freeze';
   });
+  document.getElementById('btn-reset').addEventListener('click', () => {
+    resetRound();
+    resetBoardState();
+    renderScores();
+  });
 
-  document.getElementById('btn-reset').addEventListener('click', resetScores);
-
-  // Init
   checkHealth();
   setInterval(checkHealth, 10000);
 </script>

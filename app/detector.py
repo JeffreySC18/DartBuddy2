@@ -39,7 +39,14 @@ class Detector:
 
             x1, y1, x2, y2 = map(int, box.xyxy[0])
             board_center = ((x1 + x2) // 2, (y1 + y2) // 2)
-            board_radius = max(x2 - x1, y2 - y1) / 2
+            board_radius = max(x2 - x1, y2 - y1) / 2  # initial estimate for homography
+
+            # After computing H, refine board_radius from the transformed cal points
+            if H is not None and len(valid_cal) == 4:
+                pts = valid_cal.reshape(-1, 1, 2).astype(np.float32)
+                transformed = cv2.perspectiveTransform(pts, H)
+                center = transformed.mean(axis=0)[0]
+                board_radius = float(np.mean(np.linalg.norm(transformed[:, 0] - center, axis=1)))
 
             cal_pts = []
             if result.keypoints is not None and i < len(result.keypoints):
