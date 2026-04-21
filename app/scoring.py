@@ -7,11 +7,12 @@ SECTORS = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17,
 RINGS = {
     'bull':         0.035,
     'outer_bull':   0.095,
-    'triple_inner': 0.600,
-    'triple_outer': 0.650,
+    'triple_inner': 0.550,
+    'triple_outer': 0.600,
     'double_inner': 0.950,
     'double_outer': 1.000,
 }
+
 
 CAL_NORM = np.array([
     [-0.156, -0.988],   # top    (5/20)
@@ -20,18 +21,7 @@ CAL_NORM = np.array([
     [ 0.988, -0.156],   # right  (13/6)
 ], dtype=np.float32)
 
-
 '''def dart_score(nx: float, ny: float) -> str:
-    dist = np.hypot(nx, ny)
-    if dist <= RINGS['bull']:       return 'Bull (50)'
-    if dist <= RINGS['outer_bull']: return 'Outer Bull (25)'
-    angle = (np.degrees(np.arctan2(nx, -ny)) + 360 + 9) % 360
-    sector = SECTORS[int(angle / 18) % 20]
-    if dist > RINGS['double_outer']:  return 'Miss'
-    if dist >= RINGS['double_inner']: return f'D{sector}'
-    if dist >= RINGS['triple_outer']: return f'T{sector}'
-    return str(sector)'''
-def dart_score(nx: float, ny: float) -> str:
     dist = np.hypot(nx, ny)
     if dist <= RINGS['bull']:         return 'Bull (50)'
     if dist <= RINGS['outer_bull']:   return 'Outer Bull (25)'
@@ -40,6 +30,25 @@ def dart_score(nx: float, ny: float) -> str:
     sector = SECTORS[int(angle / 18) % 20]
     if dist >= RINGS['double_inner']: return f'D{sector}'
     if dist >= RINGS['triple_outer']: return f'T{sector}'
+    return str(sector)'''
+def dart_score(nx: float, ny: float) -> str:
+    dist = np.hypot(nx, ny)
+
+    if dist <= RINGS['bull']:
+        return 'Bull (50)'
+    if dist <= RINGS['outer_bull']:
+        return 'Outer Bull (25)'
+    if dist > RINGS['double_outer']:
+        return 'Miss'
+
+    angle = (np.degrees(np.arctan2(nx, -ny)) + 360 + 9) % 360
+    sector = SECTORS[int(angle / 18) % 20]
+
+    if RINGS['triple_inner'] <= dist <= RINGS['triple_outer']:
+        return f'T{sector}'
+    if RINGS['double_inner'] <= dist <= RINGS['double_outer']:
+        return f'D{sector}'
+
     return str(sector)
 
 

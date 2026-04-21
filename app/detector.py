@@ -132,6 +132,7 @@ class Detector:
 
             label, value = "?", 0
             if board_center and board_radius:
+                log.info(f"  board_radius used for scoring: {board_radius}, dist raw (no divide): {np.hypot(*cv2.perspectiveTransform(np.array([[[float(tip_px), float(tip_py)]]], dtype=np.float32), H)[0][0])}")
                 nx, ny = pixel_to_board_norm(tip_px, tip_py, board_center, board_radius, H)
                 dist   = np.hypot(nx, ny)
 
@@ -160,6 +161,16 @@ class Detector:
                 log.info(f"    triple_outer <= 0.650")
                 log.info(f"    double_inner <= 0.950")
                 log.info(f"    double_outer <= 1.000")
+
+                log.info(f"  calling dart_score({nx:.4f}, {ny:.4f})")
+                try:
+                    label = dart_score(nx, ny)
+                except Exception as e:
+                    log.error(f"  dart_score CRASHED: {e}")
+                    label = "ERROR"
+                value = score_value(label)
+                log.info(f"  SCORE: {label} ({value} pts)")
+
 
                 label  = dart_score(nx, ny)
                 value  = score_value(label)
