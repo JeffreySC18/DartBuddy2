@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>DartBuddy — Ring Debug</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0e0e0e; --surface: #161616; --border: #242424;
+      --text: #e8e8e8; --muted: #666; --accent: #c8ff00;
+      --mono: 'DM Mono', monospace;
+    }
+    body { background: var(--bg); color: var(--text); font-family: var(--mono); font-size: 13px; min-height: 100dvh; display: flex; flex-direction: column; align-items: center; padding: 24px; gap: 20px; }
+    h1 { color: var(--accent); font-size: 15px; letter-spacing: 0.1em; }
+    .subtitle { color: var(--muted); font-size: 11px; }
+
+    .controls {
+      display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: center;
+    }
+
+    .btn {
+      font-family: var(--mono); font-size: 12px; padding: 9px 18px;
+      border: 1px solid var(--border); background: transparent;
+      color: var(--muted); border-radius: 4px; cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .btn:hover { border-color: var(--accent); color: var(--accent); }
+    .btn.active { border-color: var(--accent); color: var(--accent); }
+
+    input[type=file] { display: none; }
+
+    .result-grid {
+      display: grid;
+      grid-template-columns: 1fr 260px;
+      gap: 16px;
+      width: 100%;
+      max-width: 1000px;
+    }
+
+    @media (max-width: 700px) { .result-grid { grid-template-columns: 1fr; } }
+
+    #img-container {
+      background: #000; border: 1px solid var(--border); border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      min-height: 300px; overflow: hidden;
+    }
+    #img-container img { max-width: 100%; max-height: 70vh; display: block; }
+
+    .info-panel {
+      border: 1px solid var(--border); border-radius: 6px;
+      padding: 16px; display: flex; flex-direction: column; gap: 14px;
+    }
+
+    .info-label { color: var(--accent); font-size: 10px; letter-spacing: 0.1em; margin-bottom: 6px; }
+
+    .dart-row {
+      display: flex; justify-content: space-between; padding: 5px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .dart-row:last-child { border-bottom: none; }
+
+    .score-val { color: var(--accent); font-size: 16px; }
+    .score-miss { color: var(--muted); }
+
+    #total { font-size: 42px; color: var(--accent); line-height: 1; }
+
+    .stat-row { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; }
+    .stat-row span:last-child { color: var(--text); }
+
+    #status { color: var(--muted); font-size: 11px; text-align: center; }
+    #status.error { color: #ff4444; }
+    #status.ok { color: var(--accent); }
+
+    .spinner { display: none; width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<h1>DARTBUDDY — RING DEBUG</h1>
+<p class="subtitle">Upload a photo to see where the model thinks the ring and sector boundaries are</p>
+
+<div class="controls">
+  <button class="btn" id="btn-upload">upload image</button>
+  <button class="btn" id="btn-camera">use camera</button>
+  <div class="spinner" id="spinner"></div>
+  <span id="status">ready</span>
+  <input type="file" id="file-input" accept="image/*" capture="environment"/>
+</div>
+
+<div class="result-grid" id="result-grid" style="display:none">
+  <div id="img-container">
+    <img id="debug-img" src="" alt="debug overlay"/>
+  </div>
+
+  <div class="info-panel">
+    <div>
+      <div class="info-label">DARTS</div>
+      <div id="dart-rows"></div>
+    </div>
+    <div>
+      <div class="info-label">TOTAL</div>
+      <div id="total">0</div>
+    </div>
+    <div>
+      <div class="info-label">STATS</div>
+      <div id="stats"></div>
+    </div>
+    <div>
+      <div class="info-label">LEGEND</div>
+      <div style="font-size:11px; color:var(--muted); line-height:1.8">
+        <span style="color:#ff0000">●</span> Bull<br>
+        <span style="color:#ff8c00">●</span> Outer Bull<br>
+        <span style="color:#00ffff">●</span> Triple band edges<br>
+        <span style="color:#00ff00">●</span> Double band edge<br>
+        <span style="color:#b4b4b4">—</span> Sector lines
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const API = '';
+
+  const btnUpload  = document.getElementById('btn-upload');
+  const btnCamera  = document.getElementById('btn-camera');
+  const fileInput  = document.getElementById('file-input');
+  const spinner    = document.getElementById('spinner');
+  const statusEl   = document.getElementById('status');
+  const resultGrid = document.getElementById('result-grid');
+  const debugImg   = document.getElementById('debug-img');
+  const dartRows   = document.getElementById('dart-rows');
+  const totalEl    = document.getElementById('total');
+  const statsEl    = document.getElementById('stats');
+
+  btnUpload.addEventListener('click', () => {
+    fileInput.removeAttribute('capture');
+    fileInput.click();
+  });
+
+  btnCamera.addEventListener('click', () => {
+    fileInput.setAttribute('capture', 'environment');
+    fileInput.click();
+  });
+
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files[0];
+    if (file) sendToDebug(file);
+  });
+
+  async function sendToDebug(file) {
+    spinner.style.display = 'block';
+    statusEl.textContent  = 'detecting...';
+    statusEl.className    = '';
+
+    const form = new FormData();
+    form.append('file', file);
+
+    try {
+      const res  = await fetch(`${API}/debug`, { method: 'POST', body: form });
+      const data = await res.json();
+
+      if (data.debug_image) {
+        debugImg.src = `data:image/jpeg;base64,${data.debug_image}`;
+        resultGrid.style.display = 'grid';
+      }
+
+      // Darts
+      dartRows.innerHTML = '';
+      const darts = data.darts || [];
+      if (darts.length === 0) {
+        dartRows.innerHTML = '<div style="color:var(--muted)">no darts detected</div>';
+      } else {
+        darts.forEach((d, i) => {
+          const cls = d.value > 0 ? 'score-val' : 'score-miss';
+          dartRows.innerHTML += `
+            <div class="dart-row">
+              <span>dart ${i+1}</span>
+              <span class="${cls}">${d.score}</span>
+              <span style="color:var(--muted)">${d.value} pts</span>
+              <span style="color:var(--muted);font-size:10px">${Math.round(d.confidence*100)}%</span>
+            </div>`;
+        });
+      }
+
+      totalEl.textContent = data.total || 0;
+
+      // Stats
+      const board = data.board || {};
+      statsEl.innerHTML = `
+        <div class="stat-row"><span>board</span><span>${board.detected ? Math.round(board.confidence*100)+'%' : 'NOT FOUND'}</span></div>
+        <div class="stat-row"><span>inference</span><span>${data.inference_ms}ms</span></div>
+        <div class="stat-row"><span>darts found</span><span>${darts.length}</span></div>
+      `;
+
+      statusEl.textContent = 'done';
+      statusEl.className   = 'ok';
+
+    } catch (err) {
+      statusEl.textContent = 'request failed — is the server running?';
+      statusEl.className   = 'error';
+      console.error(err);
+    } finally {
+      spinner.style.display = 'none';
+      fileInput.value = '';
+    }
+  }
+</script>
+</body>
+</html>
