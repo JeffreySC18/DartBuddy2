@@ -21,16 +21,6 @@ CAL_NORM = np.array([
     [ 0.988, -0.156],   # right  (13/6)
 ], dtype=np.float32)
 
-'''def dart_score(nx: float, ny: float) -> str:
-    dist = np.hypot(nx, ny)
-    if dist <= RINGS['bull']:         return 'Bull (50)'
-    if dist <= RINGS['outer_bull']:   return 'Outer Bull (25)'
-    if dist > RINGS['double_outer']:  return 'Miss'
-    angle  = (np.degrees(np.arctan2(nx, -ny)) + 360 + 9) % 360
-    sector = SECTORS[int(angle / 18) % 20]
-    if dist >= RINGS['double_inner']: return f'D{sector}'
-    if dist >= RINGS['triple_outer']: return f'T{sector}'
-    return str(sector)'''
 def dart_score(nx: float, ny: float) -> str:
     dist = np.hypot(nx, ny)
 

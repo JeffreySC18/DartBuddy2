@@ -1,4 +1,4 @@
-path: D:\Coding\DartBuddy2\data_yolo
+path: D:\Coding\DartBuddy2\temp
 train: images/train
 val:   images/val
 

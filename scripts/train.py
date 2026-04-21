@@ -9,7 +9,8 @@ except ImportError:
 POSE_MODELS = {
     'nano':   'yolov8n-pose.pt',
     'small':  'yolov8s-pose.pt',
-    'medium': 'yolov8m-pose.pt',
+    #'medium': 'yolov8m-pose.pt',
+    'medium': 'model/best.pt'
 }
 
 

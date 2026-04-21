@@ -1,0 +1,8 @@
+train: ../train/images
+val: ../valid/images
+
+nc: 2
+names: ['board', 'dart']
+
+kpt_shape: [4, 3]
+flip_idx: [0, 3, 2, 1]
