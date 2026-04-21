@@ -51,50 +51,83 @@ def _norm_to_pixel(nx, ny, board_radius, H_inv):
     return int(round(px[0])), int(round(px[1]))
 
 
+def _ring_polygon(r, board_radius, H_inv, N=180):
+    pts = []
+    for k in range(N):
+        a = 2 * np.pi * k / N
+        pts.append(_norm_to_pixel(r * np.sin(a), -r * np.cos(a), board_radius, H_inv))
+    return np.array(pts, dtype=np.int32)
+
+
+def _draw_band_stripes(canvas, outer_poly, inner_poly, color, stripe_gap=6):
+    """Fill the band between two ring polygons with diagonal stripes."""
+    h, w = canvas.shape[:2]
+    mask = np.zeros((h, w), dtype=np.uint8)
+    cv2.fillPoly(mask, [outer_poly], 255)
+    cv2.fillPoly(mask, [inner_poly], 0)
+
+    stripe_layer = np.zeros_like(canvas)
+    for x in range(-h, w + h, stripe_gap):
+        cv2.line(stripe_layer,
+                 (x, 0), (x + h, h),
+                 color, 1, cv2.LINE_AA)
+
+    canvas[mask == 255] = (
+        canvas[mask == 255] * 0.4 +
+        stripe_layer[mask == 255] * 0.6
+    ).astype(np.uint8)
+
+
 def _draw_ring_overlay(frame: np.ndarray, cal_pts: list, board_radius: float) -> np.ndarray:
-    overlay   = frame.copy()
     valid_cal = np.array([p for p in cal_pts if p is not None], dtype=np.float32)
     if len(valid_cal) < 4:
-        return overlay
+        return frame.copy()
 
     H = estimate_homography(valid_cal, board_radius)
     if H is None:
-        return overlay
+        return frame.copy()
 
-    H_inv = np.linalg.inv(H)
-    N     = 180
+    H_inv    = np.linalg.inv(H)
+    annotated = frame.copy()
 
-    ring_styles = [
-        (RINGS['bull'],         (0,   0,   255), 2),
-        (RINGS['outer_bull'],   (0,   140, 255), 2),
-        (RINGS['triple_inner'], (255, 200, 0),   2),
-        (RINGS['triple_outer'], (0,   255, 255), 3),
-        (RINGS['double_inner'], (255, 200, 0),   2),
-        (RINGS['double_outer'], (0,   255, 0),   3),
+    # Build ring polygons
+    poly = {name: _ring_polygon(r, board_radius, H_inv) for name, r in RINGS.items()}
+
+    # Stripe-fill triple band (triple_inner -> triple_outer) in cyan
+    _draw_band_stripes(annotated, poly['triple_outer'], poly['triple_inner'], (0, 255, 255), stripe_gap=5)
+
+    # Stripe-fill double band (double_inner -> double_outer) in green
+    _draw_band_stripes(annotated, poly['double_outer'], poly['double_inner'], (0, 255, 80), stripe_gap=5)
+
+    # Draw ring boundary lines on top
+    ring_lines = [
+        ('bull',         (0,   0,   255), 2),
+        ('outer_bull',   (0,   140, 255), 2),
+        ('triple_inner', (0,   255, 255), 1),
+        ('triple_outer', (0,   255, 255), 2),
+        ('double_inner', (0,   255, 80),  1),
+        ('double_outer', (0,   255, 80),  2),
     ]
+    for name, color, thickness in ring_lines:
+        cv2.polylines(annotated, [poly[name]], isClosed=True,
+                      color=color, thickness=thickness, lineType=cv2.LINE_AA)
 
-    for r, color, thickness in ring_styles:
-        pts = []
-        for k in range(N):
-            a = 2 * np.pi * k / N
-            pts.append(_norm_to_pixel(r * np.sin(a), -r * np.cos(a), board_radius, H_inv))
-        cv2.polylines(overlay, [np.array(pts, dtype=np.int32)],
-                      isClosed=True, color=color, thickness=thickness, lineType=cv2.LINE_AA)
-
+    # Sector dividers
     for s in range(20):
         a  = np.radians(s * 18 - 9)
         p1 = _norm_to_pixel(RINGS['outer_bull']   * np.sin(a), -RINGS['outer_bull']   * np.cos(a), board_radius, H_inv)
         p2 = _norm_to_pixel(RINGS['double_outer'] * np.sin(a), -RINGS['double_outer'] * np.cos(a), board_radius, H_inv)
-        cv2.line(overlay, p1, p2, (180, 180, 180), 1, cv2.LINE_AA)
+        cv2.line(annotated, p1, p2, (160, 160, 160), 1, cv2.LINE_AA)
 
+    # Sector number labels
     for s in range(20):
         a       = np.radians(s * 18)
         label_r = (RINGS['double_inner'] + RINGS['double_outer']) / 2 + 0.02
         px, py  = _norm_to_pixel(label_r * np.sin(a), -label_r * np.cos(a), board_radius, H_inv)
-        cv2.putText(overlay, str(SECTORS[s]), (px - 8, py + 5),
+        cv2.putText(annotated, str(SECTORS[s]), (px - 8, py + 5),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
 
-    return cv2.addWeighted(overlay, 0.75, frame, 0.25, 0)
+    return annotated
 
 
 @app.get("/health")
@@ -151,7 +184,7 @@ async def debug(request: Request, file: UploadFile = File(...)) -> dict:
             tx, ty = int(dart["tip"][0]), int(dart["tip"][1])
             color  = (0, 255, 100) if dart["value"] > 0 else (0, 100, 255)
             cv2.circle(annotated, (tx, ty), 8, color, -1)
-            cv2.circle(annotated, (tx, ty), 8, (255, 255, 255), 1)
+            cv2.circle(annotated, (tx, ty), 8, (255, 255, 255), 2)
             cv2.putText(annotated, dart["score"], (tx - 16, ty - 14),
                         cv2.FONT_HERSHEY_DUPLEX, 0.7, color, 2, cv2.LINE_AA)
     else:
