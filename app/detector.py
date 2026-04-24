@@ -125,10 +125,10 @@ class Detector:
                 if kp.shape[0] > 0 and not (kp[0, 0] == 0 and kp[0, 1] == 0):
                     tip_px, tip_py = float(kp[0, 0]), float(kp[0, 1])
 
-            log.info(f"--- DART {dart_idx+1} ---")
+            '''log.info(f"--- DART {dart_idx+1} ---")
             log.info(f"  tip pixel:  ({tip_px:.1f}, {tip_py:.1f})")
             log.info(f"  bbox:       ({x1},{y1}) -> ({x2},{y2})")
-            log.info(f"  confidence: {float(box.conf[0]):.3f}")
+            log.info(f"  confidence: {float(box.conf[0]):.3f}")'''
 
             label, value = "?", 0
             if board_center and board_radius:
@@ -152,7 +152,7 @@ class Detector:
                 else:
                     ring = "MISS (outside double)"
 
-                log.info(f"  norm:       ({nx:.4f}, {ny:.4f})")
+                '''log.info(f"  norm:       ({nx:.4f}, {ny:.4f})")
                 log.info(f"  dist:       {dist:.4f}  ->  ring: {ring}")
                 log.info(f"  Ring boundaries for reference:")
                 log.info(f"    bull         <= 0.035")
@@ -160,7 +160,7 @@ class Detector:
                 log.info(f"    triple_inner <= 0.600")
                 log.info(f"    triple_outer <= 0.650")
                 log.info(f"    double_inner <= 0.950")
-                log.info(f"    double_outer <= 1.000")
+                log.info(f"    double_outer <= 1.000")'''
 
                 log.info(f"  calling dart_score({nx:.4f}, {ny:.4f})")
                 try:

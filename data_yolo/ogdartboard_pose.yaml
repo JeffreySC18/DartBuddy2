@@ -1,0 +1,9 @@
+path: D:\Coding\DartBuddy2\data_yolo
+train: og/images/train
+val:   og/images/val
+
+nc: 2
+names: ['board', 'dart']
+
+kpt_shape: [4, 3]
+flip_idx: [0, 3, 2, 1]
