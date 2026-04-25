@@ -1,13 +1,5 @@
 """
-convert_deepdarts_to_yolov8.py
 Convert DeepDarts labels.pkl -> YOLOv8 keypoint (pose) format.
-
-Key fix: The raw bbox in labels.pkl is in original full-resolution photo
-pixel coordinates (~4000x3000), but the cropped images and xy keypoints
-are 800x800 normalised. Using the raw bbox produces values like cx=1.9,
-w=1.8 which are way outside 0-1 and cause the board class to never be
-detected. Solution: always derive the board bbox from the 4 calibration
-keypoints, which are already correctly normalised to the cropped image.
 
 Usage:
     python converter.py --labels labels.pkl --images Megafolder/cropped_images/800 --out data_yolo
@@ -24,10 +16,7 @@ from PIL import Image
 
 
 def build_split_map(df, val_ratio=0.2, seed=42):
-    """
-    80/20 split per-image within each folder, so every folder type
-    (empty board, 1 dart, 2 darts, 3 darts) appears in both splits.
-    """
+
     random.seed(seed)
     split_map = {}
     for folder, group in df.groupby('img_folder'):
@@ -41,11 +30,7 @@ def build_split_map(df, val_ratio=0.2, seed=42):
 
 
 def board_bbox_from_keypoints(cal_xy_norm, pad=0.08):
-    """
-    Derive board bounding box from the 4 calibration keypoints.
-    cal_xy_norm: shape (4, 2), values normalised 0-1.
-    Returns (cx, cy, w, h) normalised 0-1.
-    """
+
     xs, ys = cal_xy_norm[:, 0], cal_xy_norm[:, 1]
     cx = float((xs.min() + xs.max()) / 2)
     cy = float((ys.min() + ys.max()) / 2)

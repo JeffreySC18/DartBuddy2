@@ -1,0 +1,51 @@
+image,skipped,real_darts,train2_predictions,train4_predictions,train2_correct_darts,train4_correct_darts,train2_accuracy_percent,train4_accuracy_percent,train4_minus_train2_correct_darts
+data_yolo\new\images\20260419_175528_jpg.rf.gjnCi5B54MPnBa9DuKh2.jpg,False,1,20,,0,0,0.0,0.0,0
+data_yolo\new\images\20260419_181636_jpg.rf.GoKeoUhw6T7eRx3xbeKu.jpg,False,2,"Miss, Miss",4,0,1,0.0,50.0,1
+data_yolo\new\images\20260419_180030_jpg.rf.TRpL4xmvANNQPuL7TFa2.jpg,False,2,"Miss, Miss","11, 6",0,2,0.0,100.0,2
+data_yolo\new\images\20260419_180822_jpg.rf.cFBMFG2v9ZqntFWA4RsT.jpg,False,2,"Miss, Miss, Miss",,0,0,0.0,0.0,0
+data_yolo\new\images\20260419_175310_jpg.rf.O1msb9LXVrzMlrSbR6yU.jpg,False,0,,,0,0,,,0
+data_yolo\new\images\20260419_175209_jpg.rf.h3RbaOJB83iPDHuDhiQK.jpg,False,0,,,0,0,,,0
+data_yolo\new\images\20260419_175517_jpg.rf.zY2vcJZm08Ej8DvSqE0D.jpg,False,1,Miss,,0,0,0.0,0.0,0
+data_yolo\new\images\20260419_175701_jpg.rf.GLUoMD6kSxKmf0bTgFMI.jpg,False,1,"Miss, Miss",Miss,0,0,0.0,0.0,0
+data_yolo\new\images\20260419_181649_jpg.rf.8MStYFtIKL44BjAYnOdG.jpg,False,2,"20, Miss",,0,0,0.0,0.0,0
+data_yolo\new\images\20260419_180932_jpg.rf.UM3cY613Ht59j19kOnFE.jpg,False,1,"Miss, Miss",,0,0,0.0,0.0,0
+data_yolo\new\images\20260419_180350_jpg.rf.KlWNnzs2gz6Lwki3ov8K.jpg,False,3,"D19, Miss, Miss","17, 16, Miss",0,3,0.0,100.0,3
+data_yolo\new\images\20260419_182417_jpg.rf.dC5sCktwKEJc2VLg6CIM.jpg,False,3,"Miss, Miss, Miss",20,0,1,0.0,33.33,1
+data_yolo\new\images\20260419_175504_jpg.rf.Z1b3tTRpEeI8Cxu4MOJJ.jpg,False,1,Miss,6,0,1,0.0,100.0,1
+data_yolo\new\images\20260419_175835_jpg.rf.QMGKJgDLaXXp1oIzXWDs.jpg,False,2,"Miss, Miss","Miss, T8",0,1,0.0,50.0,1
+data_yolo\new\images\20260419_182511_jpg.rf.SwaCwJd4p0cABwjFWIc2.jpg,False,3,"Miss, D7, Miss",19,0,1,0.0,33.33,1
+data_yolo\new\images\20260419_182352_jpg.rf.fRGdm2YWMFNit5HxLKQf.jpg,False,3,"18, Miss, Miss","9, 19, Miss",0,2,0.0,66.67,2
+data_yolo\new\images\20260419_181528_jpg.rf.kLSB0rde2WfA8tjq3Lql.jpg,False,3,"Miss, 3, Miss",,0,0,0.0,0.0,0
+data_yolo\new\images\20260419_181607_jpg.rf.SJADM4HVJo5p8fo705Gs.jpg,False,3,"Miss, Miss, Miss",1,0,1,0.0,33.33,1
+data_yolo\new\images\20260419_182119_jpg.rf.U61bv82yOzym8eH3j1YJ.jpg,False,3,"Miss, D3, 1",2,0,1,0.0,33.33,1
+data_yolo\new\images\20260419_181622_jpg.rf.6GGV0gO84E9FvZRyXk6Z.jpg,False,2,"4, 3",,0,0,0.0,0.0,0
+data_yolo\new\images\20260419_181802_jpg.rf.1QS2UUJ6T936do67fGFj.jpg,False,1,Miss,,0,0,0.0,0.0,0
+data_yolo\new\images\20260419_182204_jpg.rf.HdeC5IQlAOB5GouulNBa.jpg,False,3,"Miss, Miss, Miss","17, 9, 10",0,3,0.0,100.0,3
+data_yolo\new\images\20260419_175632_jpg.rf.FEDxwODMjhxBoBipiRVA.jpg,False,1,8,17,0,1,0.0,100.0,1
+data_yolo\new\images\20260419_180921_jpg.rf.1wKIxSqKzOlYRn33b8VS.jpg,False,2,"1, Miss",,0,0,0.0,0.0,0
+data_yolo\new\images\20260419_183010_jpg.rf.cuiDnFVpCRZdSTxKexmi.jpg,False,3,"Miss, Miss, Miss","?, ?",0,0,0.0,0.0,0
+data_yolo\new\images\20260419_183627_jpg.rf.KOHWpZOwfusELrGnvY7z.jpg,False,3,Miss,"?, ?",0,0,0.0,0.0,0
+data_yolo\new\images\20260419_180044_jpg.rf.oGGnISpTN1edtYzaQWYK.jpg,False,2,"Miss, Miss","16, Miss",0,1,0.0,50.0,1
+data_yolo\new\images\20260419_175254_jpg.rf.VITtMSDRWW5vGTjffSNU.jpg,False,0,,,0,0,,,0
+data_yolo\new\images\20260419_181208_jpg.rf.jjXSA5HSBzM4l6dPMus0.jpg,False,3,"13, T4, Miss","11, 11",0,1,0.0,33.33,1
+data_yolo\new\images\20260419_181702_jpg.rf.m1Syd8auefT7YapTYApj.jpg,False,2,"Miss, Miss",1,0,1,0.0,50.0,1
+data_yolo\new\images\20260419_181315_jpg.rf.pgCJziJUKsZf6J9BIAKS.jpg,False,2,7,,0,0,0.0,0.0,0
+data_yolo\new\images\20260419_182332_jpg.rf.L3I1vC5k53OMsim8BrLP.jpg,False,3,"Miss, Miss, Miss","3, 9, Outer Bull (25)",3,3,100.0,100.0,0
+data_yolo\new\images\20260419_181102_jpg.rf.78CrZ1MgeaQD6a5JoTa4.jpg,False,3,"Miss, Miss, 3",,0,0,0.0,0.0,0
+data_yolo\new\images\20260419_181331_jpg.rf.fW8a3A0mNB9Tve9t59mv.jpg,False,2,"20, Miss",D20,0,0,0.0,0.0,0
+data_yolo\new\images\20260419_175946_jpg.rf.ikPuRramjQYytU57F7LJ.jpg,False,2,"Miss, 13",20,0,1,0.0,50.0,1
+data_yolo\new\images\20260419_175245_jpg.rf.IJEkyKCK5zlCreVZkjHy.jpg,False,0,,,0,0,,,0
+data_yolo\new\images\20260419_183428_jpg.rf.JyzMkrVVrfDUoQWszyjz.jpg,False,3,"19, Miss, Miss","?, ?",0,0,0.0,0.0,0
+data_yolo\new\images\20260419_183326_jpg.rf.RVBeWp1t3dAsUtu97Fzv.jpg,False,3,"Miss, Miss, Miss",17,0,1,0.0,33.33,1
+data_yolo\new\images\20260419_181002_jpg.rf.ps0uIKSNTgaomRkuMPAc.jpg,False,1,1,,0,0,0.0,0.0,0
+data_yolo\new\images\20260419_180147_jpg.rf.plj7jcSRWeCcBoBtaI5f.jpg,False,3,"Miss, Miss",20,0,1,0.0,33.33,1
+data_yolo\new\images\20260419_182610_jpg.rf.oUTFWspkncRQmPzuUm9Z.jpg,False,3,"Miss, Miss, 4","10, T14",0,2,0.0,66.67,2
+data_yolo\new\images\20260419_183348_jpg.rf.4tfbuiOAFanxnr7fmKkY.jpg,False,3,"Miss, Miss, Miss",?,0,0,0.0,0.0,0
+data_yolo\new\images\20260419_175810_jpg.rf.SUnv1AjY5gNHCDeELbcK.jpg,False,2,"D13, Miss",16,0,0,0.0,0.0,0
+data_yolo\new\images\20260419_175147_jpg.rf.zq8ECC9ap4va1yYnn7Zl.jpg,False,0,,,0,0,,,0
+data_yolo\new\images\20260419_181452_jpg.rf.GsZtSBfjHSeB2fiULLXZ.jpg,False,3,"Miss, Miss, Miss",,0,0,0.0,0.0,0
+data_yolo\new\images\20260419_175622_jpg.rf.LBW2HwxsvGVJRTM7An4Q.jpg,False,1,Miss,,0,0,0.0,0.0,0
+data_yolo\new\images\20260419_183713_jpg.rf.nEXegpcmj54aKIDlbsKy.jpg,False,3,Miss,"3, 13, 5",0,3,0.0,100.0,3
+data_yolo\new\images\20260419_180713_jpg.rf.Aawqc2ZCsAkypYUAB5OO.jpg,False,3,"18, Miss, Miss",11,0,1,0.0,33.33,1
+data_yolo\new\images\20260419_181044_jpg.rf.AG5w4sFAuswV14ya2nQc.jpg,False,3,"Miss, Miss, Miss",,0,0,0.0,0.0,0
+data_yolo\new\images\20260419_180952_jpg.rf.wjLMFMLU5Ju9gwuqnCiP.jpg,False,1,Miss,8,0,1,0.0,100.0,1

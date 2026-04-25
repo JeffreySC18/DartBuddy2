@@ -1,12 +1,6 @@
 """
 Convert Roboflow COCO keypoint export -> YOLOv8 Pose label format.
 
-Board  (class 0): 4 keypoints  [top, right, bottom, left]
-Dart   (class 1): 1 tip keypoint, padded to 4 with zeros
-
-Output line format (17 values):
-  class cx cy w h  kp0x kp0y kp0v  kp1x kp1y kp1v  kp2x kp2y kp2v  kp3x kp3y kp3v
-
 Usage:
     python coco_to_yolov8pose.py \
         --coco    _annotations.coco.json \

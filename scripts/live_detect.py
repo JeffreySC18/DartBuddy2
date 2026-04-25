@@ -43,7 +43,7 @@ RINGS = {
 }
 
 # Calibration point positions in normalised board space
-# Order: top, right, bottom, left  (at the double ring radius)
+# Order: top, right, bottom, left
 CAL_NORM = np.array([
     [ 0.0, -1.0],
     [ 1.0,  0.0],
@@ -82,12 +82,6 @@ def dart_score(nx: float, ny: float) -> str:
 # Perspective correction
 
 def estimate_homography(cal_pts_px: np.ndarray, board_radius: float):
-    """
-    Compute homography from pixel space to normalised board space.
-    cal_pts_px: (4,2) detected calibration keypoints in pixels.
-    board_radius: radius of board in pixels.
-    Returns H (3x3) or None.
-    """
     if cal_pts_px.shape[0] < 4:
         return None
     dst = CAL_NORM * board_radius
@@ -139,10 +133,6 @@ PANEL_W = 260
 
 def draw_panel(canvas: np.ndarray, dart_scores: list, fps: float,
                inf_ms: float, board_conf: float, frozen: bool):
-    """
-    Draw the right-side scoreboard panel onto canvas in-place.
-    dart_scores: list of (label_str, int_value, conf) tuples, up to 3.
-    """
     h, w = canvas.shape[:2]
     px = w - PANEL_W
 
@@ -229,11 +219,6 @@ def draw_panel(canvas: np.ndarray, dart_scores: list, fps: float,
 
 def process_frame(frame: np.ndarray, result, fps: float,
                   inf_ms: float, frozen: bool) -> tuple:
-    """
-    Draw all detections and the HUD panel onto frame.
-    Returns (annotated_frame, dart_scores_list).
-    dart_scores_list: [(label, value, conf), ...]
-    """
     h, w = frame.shape[:2]
     # Make canvas wider to fit panel
     canvas = np.zeros((h, w + PANEL_W, 3), dtype=np.uint8)

@@ -12,8 +12,11 @@ try:
 except ImportError:
     raise SystemExit("pip install ultralytics")
 
-
-# ── Dartboard geometry (same as your scoring.py) ────────────────────────────
+try:
+    from PIL import Image, ImageOps
+except ImportError:
+    Image = None
+    ImageOps = None
 
 SECTORS = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17,
            3, 19, 7, 16, 8, 11, 14, 9, 12, 5]
@@ -35,9 +38,26 @@ CAL_NORM = np.array([
 ], dtype=np.float32)
 
 
+# ── Display constants ────────────────────────────────────────────────────────
+
 WINDOW_NAME = 'DartBuddy Eval'
 FONT = cv2.FONT_HERSHEY_DUPLEX
 
+COLORS = {
+    'background': (18, 18, 18),
+    'panel_bg':   (0, 0, 0),
+    'original':   (220, 220, 220),
+    'model2':     (0, 200, 255),     # amber  - train2 / original model
+    'model4':     (80, 220, 80),     # green  - train4 / custom data model
+    'prompt':     (245, 245, 245),
+    'muted':      (155, 155, 155),
+    'accent':     (180, 255, 0),
+    'danger':     (80, 80, 255),
+    'line':       (55, 55, 55),
+}
+
+
+# ── Scoring helpers ──────────────────────────────────────────────────────────
 
 def dart_score(nx: float, ny: float) -> str:
     dist = np.hypot(nx, ny)
@@ -68,7 +88,8 @@ def estimate_homography(cal_pts_px, board_radius):
         H, _ = cv2.findHomography(
             np.array(cal_pts_px, dtype=np.float32),
             dst.astype(np.float32),
-            cv2.RANSAC, 5.0,
+            cv2.RANSAC,
+            5.0,
         )
         return H
     except Exception:
@@ -84,21 +105,37 @@ def pixel_to_board_norm(px, py, board_center, board_radius, H):
     return (px - cx) / board_radius, (py - cy) / board_radius
 
 
+# ── Image loading ────────────────────────────────────────────────────────────
+
+def read_image_bgr(path: Path):
+    if Image is not None and ImageOps is not None:
+        try:
+            img = Image.open(path)
+            img = ImageOps.exif_transpose(img).convert('RGB')
+            return cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
+        except Exception:
+            pass
+
+    return cv2.imread(str(path))
+
+
 # ── Inference ────────────────────────────────────────────────────────────────
 
 def run_model(model, frame, conf=0.45, device='cuda'):
     results = model.predict(frame, conf=conf, device=device, verbose=False, imgsz=800)
-    result  = results[0]
-    names   = result.names
+    result = results[0]
+    names = result.names
 
     board_center = None
     board_radius = None
-    H            = None
-    darts        = []
+    H = None
+    darts = []
 
+    # Pass 1: board
     for i, box in enumerate(result.boxes):
         if names[int(box.cls[0])] != 'board':
             continue
+
         x1, y1, x2, y2 = map(int, box.xyxy[0])
         board_center = ((x1 + x2) // 2, (y1 + y2) // 2)
         board_radius = max(x2 - x1, y2 - y1) / 2
@@ -114,12 +151,15 @@ def run_model(model, frame, conf=0.45, device='cuda'):
             H = estimate_homography(cal_pts[:4], board_radius)
         break
 
+    # Pass 2: darts
     dart_idx = 0
     for i, box in enumerate(result.boxes):
         if names[int(box.cls[0])] != 'dart' or dart_idx >= 3:
             continue
+
         x1, y1, x2, y2 = map(int, box.xyxy[0])
         tip_px, tip_py = (x1 + x2) / 2, float(y2)
+
         if result.keypoints is not None and i < len(result.keypoints):
             kp = result.keypoints[i].xy[0].cpu().numpy()
             if kp.shape[0] > 0 and not (kp[0, 0] == 0 and kp[0, 1] == 0):
@@ -132,67 +172,90 @@ def run_model(model, frame, conf=0.45, device='cuda'):
 
         darts.append({
             'score': label,
-            'conf':  round(float(box.conf[0]), 2),
-            'tip':   (int(tip_px), int(tip_py)),
-            'bbox':  (x1, y1, x2, y2),
+            'conf': round(float(box.conf[0]), 2),
+            'tip': (int(tip_px), int(tip_py)),
+            'bbox': (x1, y1, x2, y2),
         })
         dart_idx += 1
 
     return darts, board_center is not None
 
 
-# ── Drawing ──────────────────────────────────────────────────────────────────
+# ── Drawing helpers ──────────────────────────────────────────────────────────
 
-COLORS = {
-    'original': (220, 220, 220),
-    'model2':   (0,   200, 255),   # amber  - train2 / original
-    'model4':   (80,  220, 80),    # green  - train4 / custom data
-    'prompt':   (245, 245, 245),
-    'muted':    (155, 155, 155),
-    'accent':   (180, 255, 0),
-    'danger':   (80, 80, 255),
-}
+def fit_text(text, max_chars=70):
+    text = str(text)
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars - 3] + '...'
 
 
-def annotate(frame, darts, color, label_prefix):
-    vis = frame.copy()
-    for i, d in enumerate(darts):
-        tx, ty = d['tip']
-        x1, y1, x2, y2 = d['bbox']
-        cv2.rectangle(vis, (x1, y1), (x2, y2), color, 2)
-        cv2.circle(vis, (tx, ty), 6, color, -1)
-        cv2.circle(vis, (tx, ty), 6, (255, 255, 255), 1)
-        text = f"#{i + 1} {d['score']} ({d['conf']:.0%})"
-        cv2.putText(vis, text, (tx + 8, ty - 8),
-                    FONT, 0.55, color, 1, cv2.LINE_AA)
-    cv2.putText(vis, label_prefix, (10, 28),
-                FONT, 0.8, color, 2, cv2.LINE_AA)
-    return vis
+def draw_text(img, text, x, y, scale=0.55, color=None, thickness=1):
+    if color is None:
+        color = COLORS['prompt']
+    cv2.putText(img, str(text), (int(x), int(y)), FONT, scale, color, thickness, cv2.LINE_AA)
 
 
-def label_original(frame):
-    vis = frame.copy()
-    cv2.putText(vis, 'Original image (no detections)', (10, 28),
-                FONT, 0.8, COLORS['original'], 2, cv2.LINE_AA)
-    return vis
+def draw_lines(img, lines, x, y, line_gap=27, scale=0.55, color=None):
+    for i, line in enumerate(lines):
+        draw_text(img, line, x, y + i * line_gap, scale=scale, color=color)
 
 
-def build_base_display(frame, darts2, darts4, img_idx, total, img_path, elapsed_ms):
+def letterbox(frame, panel_w, panel_h):
+    """Resize frame into a fixed-size panel without stretching it."""
     h, w = frame.shape[:2]
+    scale = min(panel_w / w, panel_h / h)
+    new_w = max(1, int(round(w * scale)))
+    new_h = max(1, int(round(h * scale)))
 
-    original = label_original(frame)
-    model2   = annotate(frame, darts2, COLORS['model2'], 'Model A: train2 / original')
-    model4   = annotate(frame, darts4, COLORS['model4'], 'Model B: train4 / custom data')
+    interp = cv2.INTER_AREA if scale < 1 else cv2.INTER_LINEAR
+    resized = cv2.resize(frame, (new_w, new_h), interpolation=interp)
 
-    combined = np.hstack([original, model2, model4])
+    panel = np.full((panel_h, panel_w, 3), COLORS['panel_bg'], dtype=np.uint8)
+    x0 = (panel_w - new_w) // 2
+    y0 = (panel_h - new_h) // 2
+    panel[y0:y0 + new_h, x0:x0 + new_w] = resized
+    return panel, scale, x0, y0
 
-    bar = np.zeros((68, w * 3, 3), dtype=np.uint8)
-    cv2.putText(bar, f"Image {img_idx}/{total}  |  {Path(img_path).name}",
-                (10, 27), FONT, 0.65, COLORS['prompt'], 1, cv2.LINE_AA)
-    cv2.putText(bar, f"Inference: {elapsed_ms:.0f} ms  |  Inputs are entered in this popup with number keys",
-                (10, 55), FONT, 0.55, COLORS['muted'], 1, cv2.LINE_AA)
 
-    return np.vstack([bar, combined])
+def scale_point(pt, scale, x0, y0):
+    x, y = pt
+    return int(round(x * scale + x0)), int(round(y * scale + y0))
+
+
+def scale_bbox(bbox, scale, x0, y0):
+    x1, y1, x2, y2 = bbox
+    sx1, sy1 = scale_point((x1, y1), scale, x0, y0)
+    sx2, sy2 = scale_point((x2, y2), scale, x0, y0)
+    return sx1, sy1, sx2, sy2
+
+
+def draw_panel_title(panel, title, color):
+    cv2.rectangle(panel, (0, 0), (panel.shape[1], 42), (0, 0, 0), -1)
+    draw_text(panel, title, 12, 28, scale=0.6, color=color, thickness=1)
+
+
+def draw_predictions(panel, darts, color, scale, x0, y0):
+    for i, d in enumerate(darts):
+        sx1, sy1, sx2, sy2 = scale_bbox(d['bbox'], scale, x0, y0)
+        tx, ty = scale_point(d['tip'], scale, x0, y0)
+
+        cv2.rectangle(panel, (sx1, sy1), (sx2, sy2), color, 2)
+        cv2.circle(panel, (tx, ty), 6, color, -1)
+        cv2.circle(panel, (tx, ty), 6, (255, 255, 255), 1)
+
+        text = f"#{i + 1} {d['score']} ({d['conf']:.0%})"
+        text_x = min(max(tx + 8, 8), panel.shape[1] - 150)
+        text_y = min(max(ty - 8, 55), panel.shape[0] - 10)
+        draw_text(panel, text, text_x, text_y, scale=0.48, color=color, thickness=1)
+
+
+def make_image_panel(frame, darts, title, color, panel_w, panel_h, show_detections=True):
+    panel, scale, x0, y0 = letterbox(frame, panel_w, panel_h)
+    draw_panel_title(panel, title, color)
+    if show_detections:
+        draw_predictions(panel, darts, color, scale, x0, y0)
+    return panel
 
 
 def score_list_text(label, darts):
@@ -202,31 +265,59 @@ def score_list_text(label, darts):
     return f"{label}: {', '.join(scores)}"
 
 
-def put_text_lines(img, lines, x, y, line_gap=27, scale=0.62, color=None):
-    if color is None:
-        color = COLORS['prompt']
-    for i, line in enumerate(lines):
-        cv2.putText(img, line, (x, y + i * line_gap), FONT, scale, color, 1, cv2.LINE_AA)
+def build_base_display(frame, darts2, darts4, img_idx, total, img_path, elapsed_ms, panel_w, panel_h):
+    display_w = panel_w * 3
+    header_h = 126
+
+    header = np.full((header_h, display_w, 3), COLORS['background'], dtype=np.uint8)
+    draw_text(header, f"Image {img_idx}/{total} | {fit_text(Path(img_path).name, 85)}",
+              12, 30, scale=0.65, color=COLORS['prompt'])
+    draw_text(header, f"Inference: {elapsed_ms:.0f} ms | Original image shown on left | Inputs use number keys in this popup",
+              12, 60, scale=0.52, color=COLORS['muted'])
+    draw_text(header, score_list_text('Train2', darts2), 12, 92, scale=0.50, color=COLORS['model2'])
+    draw_text(header, score_list_text('Train4', darts4), display_w // 2, 92, scale=0.50, color=COLORS['model4'])
+
+    original = make_image_panel(
+        frame, [], 'Original image (no detections)', COLORS['original'], panel_w, panel_h, show_detections=False
+    )
+    model2 = make_image_panel(
+        frame, darts2, 'Model A: train2 / original', COLORS['model2'], panel_w, panel_h, show_detections=True
+    )
+    model4 = make_image_panel(
+        frame, darts4, 'Model B: train4 / custom data', COLORS['model4'], panel_w, panel_h, show_detections=True
+    )
+
+    divider = np.full((panel_h, 2, 3), COLORS['line'], dtype=np.uint8)
+    image_row = np.hstack([original, divider, model2, divider, model4])
+
+    # Make the header match the row width after the dividers are added.
+    if header.shape[1] != image_row.shape[1]:
+        pad_w = image_row.shape[1] - header.shape[1]
+        if pad_w > 0:
+            header = np.hstack([header, np.full((header_h, pad_w, 3), COLORS['background'], dtype=np.uint8)])
+        else:
+            header = header[:, :image_row.shape[1]]
+
+    return np.vstack([header, image_row])
 
 
 def render_prompt_display(base_display, prompt, status_lines, allowed_values, error_message=None):
     prompt_h = 154
     h, w = base_display.shape[:2]
-    panel = np.zeros((prompt_h, w, 3), dtype=np.uint8)
+    panel = np.full((prompt_h, w, 3), COLORS['background'], dtype=np.uint8)
 
-    cv2.putText(panel, prompt, (10, 31), FONT, 0.68, COLORS['accent'], 1, cv2.LINE_AA)
+    cv2.line(panel, (0, 0), (w, 0), COLORS['line'], 1)
+    draw_text(panel, prompt, 12, 32, scale=0.66, color=COLORS['accent'], thickness=1)
 
-    key_text = f"Press one of: {', '.join(str(v) for v in allowed_values)}    |    S = skip image    |    Q / Esc = quit"
-    cv2.putText(panel, key_text, (10, 65), FONT, 0.55, COLORS['prompt'], 1, cv2.LINE_AA)
+    key_text = f"Press: {', '.join(str(v) for v in allowed_values)}    |    S = skip image    |    Q / Esc = quit + summarize"
+    draw_text(panel, key_text, 12, 65, scale=0.54, color=COLORS['prompt'], thickness=1)
 
+    detail_y = 96
     if error_message:
-        cv2.putText(panel, error_message, (10, 96), FONT, 0.55, COLORS['danger'], 1, cv2.LINE_AA)
-        details_y = 126
-    else:
-        details_y = 98
+        draw_text(panel, error_message, 12, 96, scale=0.54, color=COLORS['danger'], thickness=1)
+        detail_y = 126
 
-    put_text_lines(panel, status_lines, 10, details_y, line_gap=24, scale=0.5, color=COLORS['muted'])
-
+    draw_lines(panel, status_lines, 12, detail_y, line_gap=23, scale=0.48, color=COLORS['muted'])
     return np.vstack([base_display, panel])
 
 
@@ -234,13 +325,15 @@ def resize_for_screen(display, max_w=1800, max_h=1000):
     h, w = display.shape[:2]
     scale = min(max_w / w, max_h / h, 1.0)
     if scale < 1.0:
-        display = cv2.resize(display, (int(w * scale), int(h * scale)))
+        new_w = max(1, int(round(w * scale)))
+        new_h = max(1, int(round(h * scale)))
+        display = cv2.resize(display, (new_w, new_h), interpolation=cv2.INTER_AREA)
     return display
 
 
 # ── Popup input ──────────────────────────────────────────────────────────────
 
-def wait_for_count(base_display, prompt, min_value, max_value, status_lines):
+def wait_for_count(base_display, prompt, min_value, max_value, status_lines, max_window_w, max_window_h):
     allowed_values = list(range(min_value, max_value + 1))
     error_message = None
 
@@ -252,7 +345,8 @@ def wait_for_count(base_display, prompt, min_value, max_value, status_lines):
             allowed_values=allowed_values,
             error_message=error_message,
         )
-        cv2.imshow(WINDOW_NAME, resize_for_screen(display))
+        shown = resize_for_screen(display, max_window_w, max_window_h)
+        cv2.imshow(WINDOW_NAME, shown)
 
         key = cv2.waitKey(0) & 0xFF
         if key in (27, ord('q'), ord('Q')):
@@ -260,72 +354,68 @@ def wait_for_count(base_display, prompt, min_value, max_value, status_lines):
         if key in (ord('s'), ord('S')):
             return 'skip'
 
-        ch = chr(key) if key < 128 else ''
-        if ch.isdigit():
+        ch = chr(key) if 48 <= key <= 57 else ''
+        if ch:
             value = int(ch)
             if min_value <= value <= max_value:
                 return value
 
-        error_message = f"Invalid input. Use a number from {min_value} to {max_value}, S, Q, or Esc."
+        error_message = f"Invalid key. Enter a number from {min_value} to {max_value}."
 
 
-def collect_popup_scores(base_display, darts2, darts4, fixed_darts_per_image):
-    status_lines = [
-        score_list_text('Train2 predictions', darts2),
-        score_list_text('Train4 predictions', darts4),
-    ]
+def collect_image_scores(base_display, args):
 
-    if fixed_darts_per_image is None:
+    if args.darts_per_image is None:
         real_darts = wait_for_count(
             base_display,
-            prompt='Step 1/3: How many real darts are present in the original image?',
+            prompt="How many real darts are present in this image?",
             min_value=0,
             max_value=3,
-            status_lines=status_lines,
+            status_lines=status,
+            max_window_w=args.max_window_width,
+            max_window_h=args.max_window_height,
         )
-        if real_darts in {'skip', 'quit'}:
-            return real_darts, None, None
+        if real_darts in ('skip', 'quit'):
+            return real_darts
     else:
-        real_darts = fixed_darts_per_image
+        real_darts = args.darts_per_image
 
-    status_lines_with_real = [
-        f'Real darts selected: {real_darts}',
-        score_list_text('Train2 predictions', darts2),
-        score_list_text('Train4 predictions', darts4),
+    status2 = [
+        f"Real darts for this image: {real_darts}",
+        "Step 2/3: enter how many Train2 scored correctly.",
     ]
-
-    step_a = 'Step 2/3' if fixed_darts_per_image is None else 'Step 1/2'
     correct_model2 = wait_for_count(
         base_display,
-        prompt=f'{step_a}: How many darts did Train2 score correctly? 0-{real_darts}',
+        prompt="How many darts did Train2 get right?",
         min_value=0,
         max_value=real_darts,
-        status_lines=status_lines_with_real,
+        status_lines=status2,
+        max_window_w=args.max_window_width,
+        max_window_h=args.max_window_height,
     )
-    if correct_model2 in {'skip', 'quit'}:
-        return correct_model2, real_darts, None
+    if correct_model2 in ('skip', 'quit'):
+        return correct_model2
 
-    status_lines_with_a = [
-        f'Real darts selected: {real_darts}',
-        f'Train2 correct darts selected: {correct_model2}/{real_darts}',
-        score_list_text('Train4 predictions', darts4),
+    status3 = [
+        f"Real darts: {real_darts}    Train2 correct: {correct_model2}/{real_darts}",
+        "Step 3/3: enter how many Train4 scored correctly.",
     ]
-
-    step_b = 'Step 3/3' if fixed_darts_per_image is None else 'Step 2/2'
     correct_model4 = wait_for_count(
         base_display,
-        prompt=f'{step_b}: How many darts did Train4 score correctly? 0-{real_darts}',
+        prompt="How many darts did Train4 get right?",
         min_value=0,
         max_value=real_darts,
-        status_lines=status_lines_with_a,
+        status_lines=status3,
+        max_window_w=args.max_window_width,
+        max_window_h=args.max_window_height,
     )
-    if correct_model4 in {'skip', 'quit'}:
-        return correct_model4, real_darts, correct_model2
+    if correct_model4 in ('skip', 'quit'):
+        return correct_model4
 
-    return 'ok', real_darts, correct_model2, correct_model4
+    return real_darts, correct_model2, correct_model4
 
 
-# ── Results summary ──────────────────────────────────────────────────────────
+# ── Results summary ─────────────────────────────────────────────────────────
 
 def model_stats(results, key):
     reviewed = [r for r in results if not r['skipped']]
@@ -336,7 +426,10 @@ def model_stats(results, key):
     dart_accuracy = (darts_correct / darts_reviewed * 100) if darts_reviewed else 0.0
     avg_correct = (darts_correct / images) if images else 0.0
     avg_real_darts = (darts_reviewed / images) if images else 0.0
-    perfect_images = sum(1 for r in reviewed if r[f'correct_{key}'] == r['real_darts'])
+    perfect_images = sum(
+        1 for r in reviewed
+        if r['real_darts'] > 0 and r[f'correct_{key}'] == r['real_darts']
+    )
 
     return {
         'images': images,
@@ -394,7 +487,7 @@ def print_results(results, model2_name, model4_name):
             a = r['correct_model2']
             b = r['correct_model4']
             d = r['real_darts']
-            print(f"  {i:<4} {Path(r['image']).name:<35} {d:>5} {a:>5}/{d:<4} {b:>5}/{d:<4} {b-a:>+5}")
+            print(f"  {i:<4} {fit_text(Path(r['image']).name, 35):<35} {d:>5} {a:>5}/{d:<4} {b:>5}/{d:<4} {b-a:>+5}")
 
     print("=" * 78)
 
@@ -445,45 +538,53 @@ def save_results_csv(results, out_path):
     print(f"\nSaved CSV results to: {out_path}")
 
 
-def skipped_result(img_path, darts2, darts4, real_darts=0):
-    return {
-        'image':          str(img_path),
-        'darts_model2':   [d['score'] for d in darts2],
-        'darts_model4':   [d['score'] for d in darts4],
-        'real_darts':     real_darts,
+def append_skipped(results, img_path, darts2, darts4):
+    results.append({
+        'image': str(img_path),
+        'darts_model2': [d['score'] for d in darts2],
+        'darts_model4': [d['score'] for d in darts4],
+        'real_darts': 0,
         'correct_model2': 0,
         'correct_model4': 0,
-        'skipped':        True,
-    }
+        'skipped': True,
+    })
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
-    p = argparse.ArgumentParser()
-    p.add_argument('--model2', required=True, help='Path to train2 best.pt')
-    p.add_argument('--model4', required=True, help='Path to train4 best.pt')
-    p.add_argument('--images', required=True, help='Directory of evaluation images')
-    p.add_argument('--n',      type=int, default=30, help='Number of images to evaluate')
-    p.add_argument('--conf',   type=float, default=0.45)
-    p.add_argument('--device', default='cuda')
-    p.add_argument('--seed',   type=int, default=None,
-                   help='Optional random seed. Leave unset for a different random sample each run.')
-    p.add_argument('--darts-per-image', type=int, default=None,
-                   help='Optional fixed number of real darts in every image. Leave unset for mixed 1/2/3-dart datasets.')
-    p.add_argument('--out', default='eval_results.csv',
-                   help='CSV file to save detailed results for your report.')
-    args = p.parse_args()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--model2', required=True, help='Path to train2 best.pt')
+    parser.add_argument('--model4', required=True, help='Path to train4 best.pt')
+    parser.add_argument('--images', required=True, help='Directory of evaluation images')
+    parser.add_argument('--n', type=int, default=30, help='Number of images to evaluate')
+    parser.add_argument('--conf', type=float, default=0.45)
+    parser.add_argument('--device', default='cuda')
+    parser.add_argument('--seed', type=int, default=None,
+                        help='Optional random seed. Leave unset for a different random sample each run.')
+    parser.add_argument('--darts-per-image', type=int, default=None,
+                        help='Optional fixed number of real darts in every image. Leave unset for mixed 0/1/2/3-dart datasets.')
+    parser.add_argument('--out', default='eval_results.csv',
+                        help='CSV file to save detailed results for your report.')
+    parser.add_argument('--panel-width', type=int, default=520,
+                        help='Width of each image panel in the popup.')
+    parser.add_argument('--panel-height', type=int, default=560,
+                        help='Height of each image panel in the popup.')
+    parser.add_argument('--max-window-width', type=int, default=1800,
+                        help='Maximum displayed popup width.')
+    parser.add_argument('--max-window-height', type=int, default=1000,
+                        help='Maximum displayed popup height.')
+    args = parser.parse_args()
 
     if args.n <= 0:
         raise SystemExit('--n must be greater than 0')
     if args.darts_per_image is not None and not (0 <= args.darts_per_image <= 3):
         raise SystemExit('--darts-per-image must be between 0 and 3')
+    if args.panel_width < 250 or args.panel_height < 250:
+        raise SystemExit('--panel-width and --panel-height should both be at least 250')
 
-    exts = {'.jpg', '.jpeg', '.png', '.bmp'}
-    all_images = sorted(
-        p for p in Path(args.images).rglob('*') if p.suffix.lower() in exts
-    )
+    exts = {'.jpg', '.jpeg', '.png', '.bmp', '.webp'}
+    all_images = sorted(p for p in Path(args.images).rglob('*') if p.suffix.lower() in exts)
     if not all_images:
         raise SystemExit(f"No images found in {args.images}")
 
@@ -500,57 +601,67 @@ def main():
     model4 = YOLO(args.model4)
     print("Models loaded.\n")
 
-    print("Use the OpenCV popup window for all evaluation inputs.")
-    print("Click the popup if key presses are not registering.")
-    print("Keys: 0-3 for counts, S to skip image, Q or Esc to quit and summarize current results.\n")
+    print("Popup controls:")
+    print("  0-3  enter count")
+    print("  S    skip image")
+    print("  Q    quit and summarize current results")
+    print("  Esc  quit and summarize current results")
+    print("\nThe left panel is the original image with no detections.\n")
 
     cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
 
     results = []
 
     for idx, img_path in enumerate(sample, 1):
-        frame = cv2.imread(str(img_path))
+        frame = read_image_bgr(img_path)
         if frame is None:
             print(f"  Could not read {img_path}, skipping.")
             continue
 
         t0 = time.perf_counter()
-        darts2, board2 = run_model(model2, frame, args.conf, args.device)
-        darts4, board4 = run_model(model4, frame, args.conf, args.device)
+        darts2, _ = run_model(model2, frame, args.conf, args.device)
+        darts4, _ = run_model(model4, frame, args.conf, args.device)
         elapsed = (time.perf_counter() - t0) * 1000
 
-        base_display = build_base_display(frame, darts2, darts4, idx, len(sample), img_path, elapsed)
+        base_display = build_base_display(
+            frame=frame,
+            darts2=darts2,
+            darts4=darts4,
+            img_idx=idx,
+            total=len(sample),
+            img_path=img_path,
+            elapsed_ms=elapsed,
+            panel_w=args.panel_width,
+            panel_h=args.panel_height,
+        )
 
-        print(f"\n[{idx}/{len(sample)}] {img_path.name}  (inference: {elapsed:.0f}ms)")
+        print(f"\n[{idx}/{len(sample)}] {img_path.name}  (inference: {elapsed:.0f} ms)")
+        print("  Original image is shown in the left panel with no detections.")
         print(f"  Model A / train2 darts: {[d['score'] for d in darts2] or '(none detected)'}")
         print(f"  Model B / train4 darts: {[d['score'] for d in darts4] or '(none detected)'}")
-        print("  Enter counts in the popup window.")
 
-        popup_result = collect_popup_scores(base_display, darts2, darts4, args.darts_per_image)
-        action = popup_result[0]
+        score_result = collect_image_scores(base_display, args)
 
-        if action == 'quit':
+        if score_result == 'quit':
             print_results(results, 'Model A: train2 / original', 'Model B: train4 / custom data')
             save_results_csv(results, args.out)
             cv2.destroyAllWindows()
             return
 
-        if action == 'skip':
-            real_darts = popup_result[1] if len(popup_result) > 1 and popup_result[1] is not None else 0
+        if score_result == 'skip':
             print("  skipped")
-            results.append(skipped_result(img_path, darts2, darts4, real_darts))
+            append_skipped(results, img_path, darts2, darts4)
             continue
 
-        _, real_darts, count_model2, count_model4 = popup_result
-
+        real_darts, count_model2, count_model4 = score_result
         results.append({
-            'image':          str(img_path),
-            'darts_model2':   [d['score'] for d in darts2],
-            'darts_model4':   [d['score'] for d in darts4],
-            'real_darts':     real_darts,
+            'image': str(img_path),
+            'darts_model2': [d['score'] for d in darts2],
+            'darts_model4': [d['score'] for d in darts4],
+            'real_darts': real_darts,
             'correct_model2': count_model2,
             'correct_model4': count_model4,
-            'skipped':        False,
+            'skipped': False,
         })
 
         print(f"  recorded: real darts={real_darts}, train2={count_model2}/{real_darts}, train4={count_model4}/{real_darts}")

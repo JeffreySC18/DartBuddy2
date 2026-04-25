@@ -277,20 +277,11 @@
   const INTERVAL_MS = 100;   // ~10 fps
 
   // ─── Tuning ──────────────────────────────────────────────────────────────────
-
-  // Board – EMA smoothing factor. Higher = snappier but jitterier (0–1).
-  // 0.15 means each new reading contributes 15% to the running average,
-  // so small tremors are strongly damped.
   const BOARD_EMA_ALPHA     = 0.15;
 
-  // Board – how many consecutive frames the smoothed keypoints must remain
-  // within BOARD_STABLE_PX pixels of each other before we lock.
   const BOARD_STABLE_FRAMES = 10;
   const BOARD_STABLE_PX     = 6;    // per-keypoint max drift to count as stable
 
-  // Board – if the raw detection jumps more than this from the EMA average,
-  // treat it as a genuine camera shift and reset stability (but keep the EMA).
-  // This separates real movement from detector noise.
   const BOARD_SHIFT_PX      = 40;
 
   // Darts – accumulate this many frames (~2 s at 10 fps) before voting.
@@ -305,17 +296,6 @@
 
 
   // ─── Board state ─────────────────────────────────────────────────────────────
-  //
-  // Strategy:
-  //   1. On each frame with 4 valid keypoints, blend them into a running EMA.
-  //   2. Count how many consecutive frames the raw detection was within
-  //      BOARD_STABLE_PX of the EMA (i.e. "stable").
-  //   3. Once BOARD_STABLE_FRAMES consecutive stable frames are seen, lock.
-  //   4. If the raw detection jumps > BOARD_SHIFT_PX from the EMA (real camera
-  //      movement), reset the stability counter but keep the EMA — so it
-  //      quickly re-acquires after a deliberate repositioning.
-  //   5. After locking, the EMA and locked keypoints are frozen. Only the live
-  //      bbox keeps updating (for the overlay rectangle).
 
   const boardState = {
     locked:       false,
@@ -347,7 +327,7 @@
     // Once locked, nothing changes.
     if (boardState.locked) return;
 
-    if (!board?.detected) return;   // board not visible — just wait
+    if (!board?.detected) return;   // board not visible
 
     const kps = board.keypoints || [];
     if (kps.filter(k => k !== null).length < 4) return;  // partial frame — skip
@@ -359,21 +339,20 @@
       return;
     }
 
-    // Measure max drift of this frame's raw keypoints from the current EMA.
+
     const maxDrift = Math.max(...kps.map((k, i) => {
       const [ex, ey] = boardState.ema[i];
       return Math.hypot(k[0] - ex, k[1] - ey);
     }));
 
     if (maxDrift > BOARD_SHIFT_PX) {
-      // Real camera movement — reset stability counter but keep the EMA so we
-      // re-converge quickly rather than starting from scratch.
+
       boardState.stableFrames = 0;
     } else {
       boardState.stableFrames++;
     }
 
-    // Blend this frame into the EMA regardless of drift (keeps it tracking).
+
     boardState.ema = boardState.ema.map((e, i) => [
       e[0] + BOARD_EMA_ALPHA * (kps[i][0] - e[0]),
       e[1] + BOARD_EMA_ALPHA * (kps[i][1] - e[1]),
@@ -388,14 +367,6 @@
 
 
   // ─── Dart slot ───────────────────────────────────────────────────────────────
-  //
-  //  empty  ──(dart seen)──▶  accumulating  ──(vote passes)──▶  locked
-  //    ▲                                                             │
-  //    └──────────────── all-absent global reset ───────────────────┘
-  //
-  // Locked slots are completely immutable until a global reset.
-  // Absent frames while accumulating are a no-op — we don't penalise for
-  // momentary non-detection.
 
   class DartSlot {
     constructor() { this.reset(); }
